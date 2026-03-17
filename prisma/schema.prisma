@@ -1,0 +1,60 @@
+// Don Chat - Database Schema
+// Repository: https://github.com/mnuhman/Donchat.git
+//
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = "mongodb+srv://zackmoon321_db_user:vzAaZuwRLeyo1Z7n@chat.7gbjrt2.mongodb.net/donchat?retryWrites=true&w=majority"
+}
+
+model User {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  email        String   @unique
+  phone        String?
+  password     String
+  bio          String?
+  avatar       String?
+  isOnline     Boolean  @default(false)
+  lastSeen     DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  sentMessages     Message[]      @relation("SentMessages")
+  receivedMessages Message[]      @relation("ReceivedMessages")
+  conversations    ConversationParticipant[]
+}
+
+model Conversation {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  participants ConversationParticipant[]
+  messages     Message[]
+}
+
+model ConversationParticipant {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  conversationId String       @db.ObjectId
+  userId         String       @db.ObjectId
+  joinedAt       DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+}
+
+model Message {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  content        String
+  senderId       String       @db.ObjectId
+  receiverId     String?      @db.ObjectId
+  conversationId String       @db.ObjectId
+  createdAt      DateTime     @default(now())
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id])
+  receiver       User?        @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+}
