@@ -3,15 +3,8 @@
  * Repository: https://github.com/mnuhman/Donchat.git
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/parse-auth'
-import { 
-  sendMessage, 
-  getConversationMessages, 
-  editMessage, 
-  deleteMessage, 
-  clearConversationMessages,
-  messageToJSON 
-} from '@/lib/parse-db'
+import { getCurrentUser } from '@/lib/auth'
+import { db } from '@/lib/db'
 
 // Get messages for a conversation
 export async function GET(
@@ -29,11 +22,26 @@ export async function GET(
     }
 
     const { id } = await params
-    const messages = await getConversationMessages(id)
 
-    return NextResponse.json({
-      messages: messages.map(m => messageToJSON(m))
+    const messages = await db.message.findMany({
+      where: {
+        conversationId: id,
+        deletedAt: null
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+            phone: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'asc' }
     })
+
+    return NextResponse.json({ messages })
   } catch (error) {
     console.error('Get messages error:', error)
     return NextResponse.json(
@@ -68,11 +76,32 @@ export async function POST(
       )
     }
 
-    const message = await sendMessage(id, user.id, receiverId, content)
-
-    return NextResponse.json({
-      message: messageToJSON(message)
+    const message = await db.message.create({
+      data: {
+        content,
+        senderId: user.id,
+        receiverId,
+        conversationId: id
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+            phone: true
+          }
+        }
+      }
     })
+
+    // Update conversation updatedAt
+    await db.conversation.update({
+      where: { id },
+      data: { updatedAt: new Date() }
+    })
+
+    return NextResponse.json({ message })
   } catch (error) {
     console.error('Send message error:', error)
     return NextResponse.json(
@@ -106,11 +135,37 @@ export async function PUT(
       )
     }
 
-    const message = await editMessage(messageId, content)
-
-    return NextResponse.json({
-      message: messageToJSON(message)
+    // Verify message belongs to user
+    const existingMessage = await db.message.findUnique({
+      where: { id: messageId }
     })
+
+    if (!existingMessage || existingMessage.senderId !== user.id) {
+      return NextResponse.json(
+        { error: 'Message not found or not authorized' },
+        { status: 404 }
+      )
+    }
+
+    const message = await db.message.update({
+      where: { id: messageId },
+      data: {
+        content,
+        isEdited: true
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+            phone: true
+          }
+        }
+      }
+    })
+
+    return NextResponse.json({ message })
   } catch (error) {
     console.error('Edit message error:', error)
     return NextResponse.json(
@@ -141,7 +196,12 @@ export async function DELETE(
     const clearAll = searchParams.get('clearAll')
 
     if (clearAll === 'true') {
-      await clearConversationMessages(id)
+      // Soft delete all messages in conversation
+      await db.message.updateMany({
+        where: { conversationId: id },
+        data: { deletedAt: new Date() }
+      })
+
       return NextResponse.json({ success: true })
     }
 
@@ -152,7 +212,11 @@ export async function DELETE(
       )
     }
 
-    await deleteMessage(messageId)
+    // Soft delete message
+    await db.message.update({
+      where: { id: messageId },
+      data: { deletedAt: new Date() }
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {

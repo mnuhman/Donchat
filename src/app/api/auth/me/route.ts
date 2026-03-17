@@ -3,8 +3,7 @@
  * Repository: https://github.com/mnuhman/Donchat.git
  */
 import { NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/parse-auth'
-import { userToJSON } from '@/lib/parse-db'
+import { getCurrentUser } from '@/lib/auth'
 
 export async function GET() {
   try {
@@ -17,7 +16,7 @@ export async function GET() {
       )
     }
 
-    return NextResponse.json({ user: userToJSON(user) })
+    return NextResponse.json({ user })
   } catch (error) {
     console.error('Get current user error:', error)
     return NextResponse.json(

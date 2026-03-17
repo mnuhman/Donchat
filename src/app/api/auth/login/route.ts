@@ -3,8 +3,8 @@
  * Repository: https://github.com/mnuhman/Donchat.git
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { loginUser, setSessionCookie } from '@/lib/parse-auth'
-import { userToJSON } from '@/lib/parse-db'
+import { verifyPassword, createSession } from '@/lib/auth'
+import { db } from '@/lib/db'
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,20 +17,48 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { user, sessionToken } = await loginUser(email, password)
-    
-    await setSessionCookie(sessionToken)
+    const user = await db.user.findUnique({
+      where: { email }
+    })
+
+    if (!user || !user.password) {
+      return NextResponse.json(
+        { error: 'Invalid credentials' },
+        { status: 401 }
+      )
+    }
+
+    const isValid = await verifyPassword(password, user.password)
+
+    if (!isValid) {
+      return NextResponse.json(
+        { error: 'Invalid credentials' },
+        { status: 401 }
+      )
+    }
+
+    // Update online status
+    await db.user.update({
+      where: { id: user.id },
+      data: { isOnline: true }
+    })
+
+    await createSession(user.id)
 
     return NextResponse.json({
-      user: userToJSON(user),
-      sessionToken
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar,
+        bio: user.bio
+      }
     })
-  } catch (error: unknown) {
+  } catch (error) {
     console.error('Login error:', error)
-    const message = error instanceof Error ? error.message : 'Login failed'
     return NextResponse.json(
-      { error: message },
-      { status: 401 }
+      { error: 'Login failed' },
+      { status: 500 }
     )
   }
 }

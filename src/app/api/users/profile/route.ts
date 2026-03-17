@@ -3,8 +3,8 @@
  * Repository: https://github.com/mnuhman/Donchat.git
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentUser, updateUserProfile, deleteUserAccount } from '@/lib/parse-auth'
-import { userToJSON } from '@/lib/parse-db'
+import { getCurrentUser, hashPassword } from '@/lib/auth'
+import { db } from '@/lib/db'
 
 // Get current user profile
 export async function GET() {
@@ -18,7 +18,7 @@ export async function GET() {
       )
     }
 
-    return NextResponse.json({ user: userToJSON(user) })
+    return NextResponse.json({ user })
   } catch (error) {
     console.error('Get profile error:', error)
     return NextResponse.json(
@@ -42,22 +42,17 @@ export async function PUT(request: NextRequest) {
 
     const { name, email, bio, avatar } = await request.json()
 
-    const sessionToken = user.getSessionToken()
-    if (!sessionToken) {
-      return NextResponse.json(
-        { error: 'No session token' },
-        { status: 401 }
-      )
-    }
-
-    const updatedUser = await updateUserProfile(sessionToken, {
-      name,
-      email,
-      bio,
-      avatar
+    const updatedUser = await db.user.update({
+      where: { id: user.id },
+      data: {
+        name: name || user.name,
+        email: email || user.email,
+        bio: bio || null,
+        avatar: avatar || null,
+      }
     })
 
-    return NextResponse.json({ user: userToJSON(updatedUser) })
+    return NextResponse.json({ user: updatedUser })
   } catch (error) {
     console.error('Update profile error:', error)
     return NextResponse.json(
@@ -79,15 +74,40 @@ export async function DELETE() {
       )
     }
 
-    const sessionToken = user.getSessionToken()
-    if (!sessionToken) {
-      return NextResponse.json(
-        { error: 'No session token' },
-        { status: 401 }
-      )
+    // Delete user's messages
+    await db.message.deleteMany({
+      where: {
+        OR: [
+          { senderId: user.id },
+          { receiverId: user.id }
+        ]
+      }
+    })
+
+    // Delete user's conversation participants
+    await db.conversationParticipant.deleteMany({
+      where: { userId: user.id }
+    })
+
+    // Delete orphaned conversations
+    const orphanedConversations = await db.conversation.findMany({
+      where: {
+        participants: { none: {} }
+      }
+    })
+
+    if (orphanedConversations.length > 0) {
+      await db.conversation.deleteMany({
+        where: {
+          id: { in: orphanedConversations.map(c => c.id) }
+        }
+      })
     }
 
-    await deleteUserAccount(sessionToken)
+    // Delete the user
+    await db.user.delete({
+      where: { id: user.id }
+    })
 
     return NextResponse.json({ success: true, message: 'Account deleted successfully' })
   } catch (error) {

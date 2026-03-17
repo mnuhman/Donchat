@@ -10,7 +10,7 @@ generator client {
 
 datasource db {
   provider = "mongodb"
-  url      = "mongodb+srv://zackmoon321_db_user:vzAaZuwRLeyo1Z7n@chat.7gbjrt2.mongodb.net/donchat?retryWrites=true&w=majority"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -53,7 +53,10 @@ model Message {
   senderId       String       @db.ObjectId
   receiverId     String?      @db.ObjectId
   conversationId String       @db.ObjectId
+  isEdited       Boolean      @default(false)
+  deletedAt      DateTime?
   createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
   sender         User         @relation("SentMessages", fields: [senderId], references: [id])
   receiver       User?        @relation("ReceivedMessages", fields: [receiverId], references: [id])
   conversation   Conversation @relation(fields: [conversationId], references: [id])

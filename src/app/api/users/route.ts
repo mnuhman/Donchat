@@ -3,9 +3,10 @@
  * Repository: https://github.com/mnuhman/Donchat.git
  */
 import { NextResponse } from 'next/server'
-import { getCurrentUser, getAllUsers } from '@/lib/parse-auth'
-import { userToJSON } from '@/lib/parse-db'
+import { getCurrentUser } from '@/lib/auth'
+import { db } from '@/lib/db'
 
+// Get all users except current user
 export async function GET() {
   try {
     const user = await getCurrentUser()
@@ -17,11 +18,26 @@ export async function GET() {
       )
     }
 
-    const users = await getAllUsers(user.id)
-
-    return NextResponse.json({ 
-      users: users.map(u => userToJSON(u))
+    const users = await db.user.findMany({
+      where: {
+        NOT: {
+          id: user.id
+        }
+      },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        avatar: true,
+        isOnline: true,
+        lastSeen: true,
+      },
+      orderBy: {
+        name: 'asc'
+      }
     })
+
+    return NextResponse.json({ users })
   } catch (error) {
     console.error('Get users error:', error)
     return NextResponse.json(

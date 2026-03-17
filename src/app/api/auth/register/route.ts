@@ -3,8 +3,8 @@
  * Repository: https://github.com/mnuhman/Donchat.git
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { registerUser, setSessionCookie } from '@/lib/parse-auth'
-import { userToJSON } from '@/lib/parse-db'
+import { hashPassword, createSession } from '@/lib/auth'
+import { db } from '@/lib/db'
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,20 +24,45 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { user, sessionToken } = await registerUser(name, email, password)
-    
-    await setSessionCookie(sessionToken)
+    // Check if user exists
+    const existingUser = await db.user.findUnique({
+      where: { email }
+    })
+
+    if (existingUser) {
+      return NextResponse.json(
+        { error: 'Email already registered' },
+        { status: 400 }
+      )
+    }
+
+    // Create user
+    const hashedPassword = await hashPassword(password)
+    const user = await db.user.create({
+      data: {
+        name,
+        email,
+        password: hashedPassword,
+        isOnline: true
+      }
+    })
+
+    await createSession(user.id)
 
     return NextResponse.json({
-      user: userToJSON(user),
-      sessionToken
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar,
+        bio: user.bio
+      }
     })
-  } catch (error: unknown) {
+  } catch (error) {
     console.error('Register error:', error)
-    const message = error instanceof Error ? error.message : 'Registration failed'
     return NextResponse.json(
-      { error: message },
-      { status: 400 }
+      { error: 'Registration failed' },
+      { status: 500 }
     )
   }
 }

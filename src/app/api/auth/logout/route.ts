@@ -3,19 +3,25 @@
  * Repository: https://github.com/mnuhman/Donchat.git
  */
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import { logoutUser, clearSessionCookie } from '@/lib/parse-auth'
+import { getCurrentUser, clearSession } from '@/lib/auth'
+import { db } from '@/lib/db'
 
 export async function POST() {
   try {
-    const cookieStore = await cookies()
-    const sessionToken = cookieStore.get('parseSessionToken')?.value
+    const user = await getCurrentUser()
 
-    if (sessionToken) {
-      await logoutUser(sessionToken)
+    if (user) {
+      // Update offline status
+      await db.user.update({
+        where: { id: user.id },
+        data: {
+          isOnline: false,
+          lastSeen: new Date()
+        }
+      })
     }
 
-    await clearSessionCookie()
+    await clearSession()
 
     return NextResponse.json({ success: true })
   } catch (error) {
