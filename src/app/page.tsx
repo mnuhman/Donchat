@@ -638,171 +638,176 @@ export default function DonChat() {
   // Auth pages - Login & Register
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-900 to-slate-900 p-4">
-        <Card className="w-full max-w-md border-sky-900 bg-slate-900/50 backdrop-blur-sm">
-          <CardHeader className="text-center space-y-4">
-            <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-sky-500 to-teal-600 flex items-center justify-center">
-              <MessageCircle className="h-8 w-8 text-white" />
+      <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900 font-sans">
+        {/* Header */}
+        <header className="flex items-center justify-between whitespace-nowrap border-b border-teal-500/10 px-6 py-4 md:px-10">
+          <div className="flex items-center gap-2 text-teal-600">
+            <div className="w-8 h-8 flex items-center justify-center bg-teal-600/10 rounded-lg">
+              <MessageCircle className="text-teal-600 h-5 w-5" />
             </div>
-            <div>
-              <CardTitle className="text-2xl text-white">Don Chat</CardTitle>
-              <CardDescription className="text-sky-400 mt-2">
-                Connect with friends instantly
-              </CardDescription>
+            <h2 className="text-slate-900 dark:text-slate-100 text-xl font-bold leading-tight tracking-tight">donchat</h2>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="hidden md:inline text-sm text-slate-500 dark:text-slate-400">
+              {authMode === 'login' ? "New to donchat?" : "Already have an account?"}
+            </span>
+            <button 
+              onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setAuthError('') }}
+              className="flex min-w-[84px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-teal-600/10 text-teal-600 text-sm font-bold leading-normal hover:bg-teal-600/20 transition-colors"
+            >
+              <span className="truncate">{authMode === 'login' ? 'Register' : 'Login'}</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <main className="flex-1 flex items-center justify-center p-4 md:p-10">
+          <div className="bg-white dark:bg-slate-800/50 w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 rounded-xl shadow-xl overflow-hidden border border-teal-500/5">
+            {/* Hero Section - Left Side */}
+            <div className="hidden lg:flex flex-col justify-center p-12 bg-teal-600 relative overflow-hidden text-white">
+              <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>
+              <div className="relative z-10">
+                <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-8 backdrop-blur-sm">
+                  <MessageCircle className="h-8 w-8" />
+                </div>
+                <h1 className="text-4xl font-extrabold mb-4 leading-tight">Connect instantly with your community</h1>
+                <p className="text-teal-100 text-lg opacity-90 leading-relaxed">
+                  Join thousands of teams using donchat to streamline their communication and boost productivity in a clean, focused environment.
+                </p>
+                <div className="mt-12 space-y-6">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-white/10 p-2 rounded-full">
+                      <Lock className="h-5 w-5" />
+                    </div>
+                    <span>End-to-end encryption by default</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="bg-white/10 p-2 rounded-full">
+                      <Bot className="h-5 w-5" />
+                    </div>
+                    <span>AI-powered assistant built-in</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="bg-white/10 p-2 rounded-full">
+                      <MessageCircle className="h-5 w-5" />
+                    </div>
+                    <span>Real-time low-latency messaging</span>
+                  </div>
+                </div>
+              </div>
+              {/* Decorative Background Element */}
+              <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-white/5 rounded-full blur-3xl"></div>
             </div>
-          </CardHeader>
-          <CardContent>
-            <Tabs value={authMode} onValueChange={(v) => { setAuthMode(v as 'login' | 'register'); setAuthError('') }}>
-              <TabsList className="grid w-full grid-cols-2 bg-sky-900/50">
-                <TabsTrigger value="login" className="data-[state=active]:bg-sky-600">Login</TabsTrigger>
-                <TabsTrigger value="register" className="data-[state=active]:bg-sky-600">Register</TabsTrigger>
-              </TabsList>
+
+            {/* Form Section - Right Side */}
+            <div className="flex flex-col justify-center p-8 md:p-16 lg:p-20 bg-white dark:bg-slate-900">
+              <div className="mb-10">
+                <h2 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">
+                  {authMode === 'login' ? 'Welcome back' : 'Create account'}
+                </h2>
+                <p className="text-slate-500 dark:text-slate-400">
+                  {authMode === 'login' ? 'Please enter your details to sign in' : 'Enter your details to get started'}
+                </p>
+              </div>
 
               {authError && (
-                <div className="mt-4 bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-red-400 text-sm text-center">
+                <div className="mb-6 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg p-3 text-red-600 dark:text-red-400 text-sm">
                   {authError}
                 </div>
               )}
 
-              <TabsContent value="login" className="mt-6">
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="login-email" className="text-sky-300">Email</Label>
+              <form onSubmit={authMode === 'login' ? handleLogin : handleRegister} className="space-y-6">
+                {authMode === 'register' && (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-slate-700 dark:text-slate-300 text-sm font-semibold">Name</label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-sky-700" />
-                      <Input
-                        id="login-email"
-                        type="email"
-                        placeholder="your@email.com"
-                        value={authEmail}
-                        onChange={(e) => setAuthEmail(e.target.value)}
-                        required
-                        className="pl-10 bg-sky-900/50 border-sky-800 text-white placeholder:text-sky-700"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="login-password" className="text-sky-300">Password</Label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-sky-700" />
-                      <Input
-                        id="login-password"
-                        type="password"
-                        placeholder="••••••••"
-                        value={authPassword}
-                        onChange={(e) => setAuthPassword(e.target.value)}
-                        required
-                        className="pl-10 bg-sky-900/50 border-sky-800 text-white placeholder:text-sky-700"
-                      />
-                    </div>
-                  </div>
-                  <Button 
-                    type="submit"
-                    disabled={isAuthLoading}
-                    className="w-full bg-gradient-to-r from-sky-500 to-teal-600 hover:from-sky-600 hover:to-teal-700"
-                  >
-                    {isAuthLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Signing in...
-                      </>
-                    ) : (
-                      <>
-                        Sign In
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </>
-                    )}
-                  </Button>
-                </form>
-                <p className="mt-4 text-center text-sm text-sky-500">
-                  Don't have an account?{' '}
-                  <button 
-                    onClick={() => { setAuthMode('register'); setAuthError('') }}
-                    className="text-sky-400 hover:text-sky-300 underline"
-                  >
-                    Register
-                  </button>
-                </p>
-              </TabsContent>
-
-              <TabsContent value="register" className="mt-6">
-                <form onSubmit={handleRegister} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="register-name" className="text-sky-300">Name</Label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-sky-700" />
-                      <Input
-                        id="register-name"
+                      <User className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                      <input
                         type="text"
                         placeholder="Your name"
                         value={authName}
                         onChange={(e) => setAuthName(e.target.value)}
                         required
-                        className="pl-10 bg-sky-900/50 border-sky-800 text-white placeholder:text-sky-700"
+                        className="w-full pl-12 pr-4 py-3.5 rounded-lg border border-teal-500/20 dark:border-teal-500/10 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all placeholder:text-slate-400"
                       />
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="register-email" className="text-sky-300">Email</Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-sky-700" />
-                      <Input
-                        id="register-email"
-                        type="email"
-                        placeholder="your@email.com"
-                        value={authEmail}
-                        onChange={(e) => setAuthEmail(e.target.value)}
-                        required
-                        className="pl-10 bg-sky-900/50 border-sky-800 text-white placeholder:text-sky-700"
-                      />
-                    </div>
+                )}
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-slate-700 dark:text-slate-300 text-sm font-semibold">Email Address</label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                    <input
+                      type="email"
+                      placeholder="alex@company.com"
+                      value={authEmail}
+                      onChange={(e) => setAuthEmail(e.target.value)}
+                      required
+                      className="w-full pl-12 pr-4 py-3.5 rounded-lg border border-teal-500/20 dark:border-teal-500/10 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all placeholder:text-slate-400"
+                    />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="register-password" className="text-sky-300">Password</Label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-sky-700" />
-                      <Input
-                        id="register-password"
-                        type="password"
-                        placeholder="Min 6 characters"
-                        value={authPassword}
-                        onChange={(e) => setAuthPassword(e.target.value)}
-                        required
-                        className="pl-10 bg-sky-900/50 border-sky-800 text-white placeholder:text-sky-700"
-                      />
-                    </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-slate-700 dark:text-slate-300 text-sm font-semibold">Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      value={authPassword}
+                      onChange={(e) => setAuthPassword(e.target.value)}
+                      required
+                      className="w-full pl-12 pr-4 py-3.5 rounded-lg border border-teal-500/20 dark:border-teal-500/10 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all placeholder:text-slate-400"
+                    />
                   </div>
-                  <Button 
-                    type="submit"
-                    disabled={isAuthLoading}
-                    className="w-full bg-gradient-to-r from-sky-500 to-teal-600 hover:from-sky-600 hover:to-teal-700"
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isAuthLoading}
+                  className="w-full bg-teal-600 text-white py-4 rounded-lg font-bold text-lg hover:bg-teal-700 shadow-lg shadow-teal-600/20 transform active:scale-[0.98] transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isAuthLoading ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      {authMode === 'login' ? 'Signing in...' : 'Creating account...'}
+                    </>
+                  ) : (
+                    <>
+                      {authMode === 'login' ? 'Login' : 'Create Account'}
+                      <ArrowRight className="h-5 w-5" />
+                    </>
+                  )}
+                </button>
+
+                <p className="text-center text-slate-500 dark:text-slate-400 text-sm mt-8">
+                  {authMode === 'login' ? "Don't have an account?" : "Already have an account?"}{' '}
+                  <button
+                    type="button"
+                    onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setAuthError('') }}
+                    className="text-teal-600 font-bold hover:underline"
                   >
-                    {isAuthLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Creating account...
-                      </>
-                    ) : (
-                      <>
-                        Create Account
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </>
-                    )}
-                  </Button>
-                </form>
-                <p className="mt-4 text-center text-sm text-sky-500">
-                  Already have an account?{' '}
-                  <button 
-                    onClick={() => { setAuthMode('login'); setAuthError('') }}
-                    className="text-sky-400 hover:text-sky-300 underline"
-                  >
-                    Sign in
+                    {authMode === 'login' ? 'Register for free' : 'Sign in'}
                   </button>
                 </p>
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
+              </form>
+            </div>
+          </div>
+        </main>
+
+        {/* Footer */}
+        <footer className="px-10 py-6 border-t border-teal-500/5">
+          <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-slate-400 uppercase tracking-widest font-medium">
+            <p>© 2024 donchat inc. all rights reserved.</p>
+            <div className="flex gap-6">
+              <a className="hover:text-teal-600 transition-colors cursor-pointer">Privacy Policy</a>
+              <a className="hover:text-teal-600 transition-colors cursor-pointer">Terms of Service</a>
+              <a className="hover:text-teal-600 transition-colors cursor-pointer">Help Center</a>
+            </div>
+          </div>
+        </footer>
       </div>
     )
   }
