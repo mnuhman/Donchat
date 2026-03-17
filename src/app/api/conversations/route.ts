@@ -3,8 +3,12 @@
  * Repository: https://github.com/mnuhman/Donchat.git
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/auth'
-import { db } from '@/lib/db'
+import { getCurrentUser } from '@/lib/parse-auth'
+import { 
+  createOrGetConversation, 
+  getUserConversations, 
+  conversationToJSON 
+} from '@/lib/parse-db'
 
 // Get all conversations for current user
 export async function GET() {
@@ -18,45 +22,11 @@ export async function GET() {
       )
     }
 
-    const conversations = await db.conversation.findMany({
-      where: {
-        participants: {
-          some: {
-            id: user.id
-          }
-        }
-      },
-      include: {
-        participants: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            avatar: true,
-            isOnline: true,
-          }
-        },
-        messages: {
-          orderBy: {
-            createdAt: 'desc'
-          },
-          take: 1,
-          include: {
-            sender: {
-              select: {
-                id: true,
-                name: true,
-              }
-            }
-          }
-        }
-      },
-      orderBy: {
-        updatedAt: 'desc'
-      }
-    })
+    const conversations = await getUserConversations(user.id)
 
-    return NextResponse.json({ conversations })
+    return NextResponse.json({
+      conversations: conversations.map(c => conversationToJSON(c, user.id))
+    })
   } catch (error) {
     console.error('Get conversations error:', error)
     return NextResponse.json(
@@ -66,7 +36,7 @@ export async function GET() {
   }
 }
 
-// Create or get conversation with another user
+// Create a new conversation
 export async function POST(request: NextRequest) {
   try {
     const user = await getCurrentUser()
@@ -87,67 +57,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if conversation already exists between these users
-    const existingConversation = await db.conversation.findFirst({
-      where: {
-        AND: [
-          {
-            participants: {
-              some: {
-                id: user.id
-              }
-            }
-          },
-          {
-            participants: {
-              some: {
-                id: recipientId
-              }
-            }
-          }
-        ]
-      },
-      include: {
-        participants: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            avatar: true,
-            isOnline: true,
-          }
-        }
-      }
+    const conversation = await createOrGetConversation(user.id, recipientId)
+
+    return NextResponse.json({
+      conversation: conversationToJSON(conversation, user.id)
     })
-
-    if (existingConversation) {
-      return NextResponse.json({ conversation: existingConversation })
-    }
-
-    // Create new conversation
-    const conversation = await db.conversation.create({
-      data: {
-        participants: {
-          connect: [
-            { id: user.id },
-            { id: recipientId }
-          ]
-        }
-      },
-      include: {
-        participants: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            avatar: true,
-            isOnline: true,
-          }
-        }
-      }
-    })
-
-    return NextResponse.json({ conversation })
   } catch (error) {
     console.error('Create conversation error:', error)
     return NextResponse.json(

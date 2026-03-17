@@ -3,17 +3,23 @@
  * Repository: https://github.com/mnuhman/Donchat.git
  */
 import { NextResponse } from 'next/server'
-import { logout } from '@/lib/auth'
+import { cookies } from 'next/headers'
+import { logoutUser, clearSessionCookie } from '@/lib/parse-auth'
 
 export async function POST() {
   try {
-    await logout()
+    const cookieStore = await cookies()
+    const sessionToken = cookieStore.get('parseSessionToken')?.value
+
+    if (sessionToken) {
+      await logoutUser(sessionToken)
+    }
+
+    await clearSessionCookie()
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Logout error:', error)
-    return NextResponse.json(
-      { error: 'Failed to logout' },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: true })
   }
 }

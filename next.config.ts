@@ -6,9 +6,11 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
-  serverExternalPackages: ['bcryptjs', '@prisma/client', 'prisma'],
+  serverExternalPackages: ['bcryptjs', 'parse'],
   env: {
-    DATABASE_URL: process.env.DATABASE_URL,
+    PARSE_APP_ID: process.env.PARSE_APP_ID,
+    PARSE_JAVASCRIPT_KEY: process.env.PARSE_JAVASCRIPT_KEY,
+    PARSE_SERVER_URL: process.env.PARSE_SERVER_URL,
   },
 };
 

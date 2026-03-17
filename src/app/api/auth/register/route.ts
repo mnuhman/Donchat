@@ -3,81 +3,41 @@
  * Repository: https://github.com/mnuhman/Donchat.git
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { hashPassword, createSession, validateEmail, validatePassword } from '@/lib/auth'
+import { registerUser, setSessionCookie } from '@/lib/parse-auth'
+import { userToJSON } from '@/lib/parse-db'
 
 export async function POST(request: NextRequest) {
   try {
     const { name, email, password } = await request.json()
 
-    // Validate input
-    if (!name || !name.trim()) {
+    if (!name || !email || !password) {
       return NextResponse.json(
-        { error: 'Name is required' },
+        { error: 'Name, email, and password are required' },
         { status: 400 }
       )
     }
 
-    if (!email || !validateEmail(email)) {
+    if (password.length < 6) {
       return NextResponse.json(
-        { error: 'Valid email is required' },
+        { error: 'Password must be at least 6 characters' },
         { status: 400 }
       )
     }
 
-    const passwordValidation = validatePassword(password)
-    if (!passwordValidation.valid) {
-      return NextResponse.json(
-        { error: passwordValidation.error },
-        { status: 400 }
-      )
-    }
-
-    // Check if user already exists
-    const existingUser = await db.user.findUnique({
-      where: { email: email.toLowerCase() }
-    })
-
-    if (existingUser) {
-      return NextResponse.json(
-        { error: 'An account with this email already exists' },
-        { status: 400 }
-      )
-    }
-
-    // Hash password
-    const hashedPassword = await hashPassword(password)
-
-    // Create user
-    const user = await db.user.create({
-      data: {
-        name: name.trim(),
-        email: email.toLowerCase(),
-        password: hashedPassword,
-        isOnline: true
-      }
-    })
-
-    // Create session
-    await createSession(user.id)
+    const { user, sessionToken } = await registerUser(name, email, password)
+    
+    await setSessionCookie(sessionToken)
 
     return NextResponse.json({
-      success: true,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar,
-        bio: user.bio,
-        isOnline: user.isOnline
-      }
+      user: userToJSON(user),
+      sessionToken
     })
-
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Register error:', error)
+    const message = error instanceof Error ? error.message : 'Registration failed'
     return NextResponse.json(
-      { error: 'Failed to create account. Please try again.' },
-      { status: 500 }
+      { error: message },
+      { status: 400 }
     )
   }
 }
