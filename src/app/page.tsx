@@ -939,8 +939,8 @@ export default function DonChat() {
                   <div className="mb-4">
                     <p className="text-xs text-sky-700 px-2 mb-2">Recent Chats</p>
                     {conversations.map((conv) => {
-                      const otherUser = conv.participants.find(p => p.id !== user?.id)
-                      const lastMessage = conv.messages[0]
+                      const otherUser = conv.participants?.find(p => p.id !== user?.id)
+                      const lastMessage = conv.messages?.[0]
                       const isSelected = selectedConversation?.id === conv.id
                       
                       if (!otherUser) return null
