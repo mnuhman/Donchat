@@ -2,7 +2,8 @@
  * Don Chat - Database Configuration
  * Repository: https://github.com/mnuhman/Donchat.git
  * 
- * Prisma client for MongoDB
+ * Prisma client for PostgreSQL
+ * Supported: Supabase, Neon, Vercel Postgres, Railway
  */
 import { PrismaClient } from '@prisma/client'
 

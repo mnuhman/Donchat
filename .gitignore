@@ -63,3 +63,6 @@ bun.lock
 .vscode/
 *.swp
 *.swo
+
+# Uploads
+upload/

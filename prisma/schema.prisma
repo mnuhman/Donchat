@@ -1,63 +1,172 @@
-// Don Chat - Database Schema
+// DonChat - PostgreSQL Schema
 // Repository: https://github.com/mnuhman/Donchat.git
 //
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// PostgreSQL Database Configuration
+// Supported providers: Supabase, Neon, Vercel Postgres, Railway, etc.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "mongodb"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL") // Optional: for connection pooling
 }
 
 model User {
-  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  id           String   @id @default(cuid())
   name         String
   email        String   @unique
   phone        String?
   password     String
   bio          String?
   avatar       String?
+  status       String?  // Custom status message
   isOnline     Boolean  @default(false)
   lastSeen     DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  sentMessages     Message[]      @relation("SentMessages")
-  receivedMessages Message[]      @relation("ReceivedMessages")
-  conversations    ConversationParticipant[]
+  
+  // Relations
+  sentMessages       Message[]        @relation("SentMessages")
+  receivedMessages   Message[]        @relation("ReceivedMessages")
+  conversations      ConversationParticipant[]
+  groupAdmins        GroupChat[]      @relation("GroupAdmins")
+  groupMembers       GroupMember[]
+  reactions          MessageReaction[]
+  starredMessages    StarredMessage[]
+  
+  @@index([email])
+  @@index([isOnline])
 }
 
 model Conversation {
-  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  id           String   @id @default(cuid())
+  type         String   @default("PRIVATE") // PRIVATE, GROUP, BROADCAST, AI, SECRET
+  name         String?
+  description  String?
+  avatar       String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  
+  // Relations
   participants ConversationParticipant[]
   messages     Message[]
+  group        GroupChat?
+  
+  @@index([type])
+  @@index([updatedAt])
 }
 
 model ConversationParticipant {
-  id             String       @id @default(auto()) @map("_id") @db.ObjectId
-  conversationId String       @db.ObjectId
-  userId         String       @db.ObjectId
-  joinedAt       DateTime     @default(now())
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
-  user           User         @relation(fields: [userId], references: [id])
+  id             String   @id @default(cuid())
+  conversationId String
+  userId         String
+  joinedAt       DateTime  @default(now())
+  lastReadAt     DateTime?
+  isMuted        Boolean   @default(false)
+  isPinned       Boolean   @default(false)
+  
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([conversationId, userId])
+  @@index([conversationId])
+  @@index([userId])
+}
+
+model GroupChat {
+  id              String   @id @default(cuid())
+  conversationId  String   @unique
+  name            String
+  description     String?
+  avatar          String?
+  createdBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  admins          User[]       @relation("GroupAdmins")
+  members         GroupMember[]
+  
+  @@index([createdBy])
+}
+
+model GroupMember {
+  id        String   @id @default(cuid())
+  groupId   String
+  userId    String
+  role      String   @default("MEMBER") // ADMIN, MEMBER
+  joinedAt  DateTime @default(now())
+  
+  group     GroupChat @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([groupId, userId])
 }
 
 model Message {
-  id             String       @id @default(auto()) @map("_id") @db.ObjectId
-  content        String
-  senderId       String       @db.ObjectId
-  receiverId     String?      @db.ObjectId
-  conversationId String       @db.ObjectId
-  isEdited       Boolean      @default(false)
+  id             String   @id @default(cuid())
+  content        String   @db.Text
+  type           String   @default("TEXT") // TEXT, IMAGE, VIDEO, AUDIO, VOICE, DOCUMENT, LOCATION, CONTACT
+  mediaUrl       String?
+  fileName       String?
+  fileSize       Int?
+  senderId       String
+  receiverId     String?
+  conversationId String
+  
+  // Message features
+  replyToId      String?
+  isEdited       Boolean  @default(false)
+  isForwarded    Boolean  @default(false)
   deletedAt      DateTime?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  sender         User         @relation("SentMessages", fields: [senderId], references: [id])
-  receiver       User?        @relation("ReceivedMessages", fields: [receiverId], references: [id])
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  
+  // Read status (stored as JSON string)
+  readBy         String?  @db.Text
+  deliveredTo    String?  @db.Text
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  // Relations
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver       User?        @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  reactions      MessageReaction[]
+  starredBy      StarredMessage[]
+  replyTo        Message?     @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies        Message[]    @relation("MessageReplies")
+  
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+  @@index([receiverId])
+}
+
+model MessageReaction {
+  id          String   @id @default(cuid())
+  messageId   String
+  userId      String
+  emoji       String
+  createdAt   DateTime @default(now())
+  
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([messageId, userId])
+  @@index([messageId])
+}
+
+model StarredMessage {
+  id          String   @id @default(cuid())
+  messageId   String
+  userId      String
+  createdAt   DateTime @default(now())
+  
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([messageId, userId])
+  @@index([userId])
 }
