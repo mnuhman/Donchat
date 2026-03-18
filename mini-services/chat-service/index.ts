@@ -391,8 +391,8 @@ setInterval(() => {
   console.log(`Queue cleanup: ${messageQueue.size} users with queued messages`)
 }, 5 * 60 * 1000)
 
-const PORT = 3003
-httpServer.listen(PORT, () => {
+const PORT = parseInt(process.env.PORT || '3003', 10)
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`Chat WebSocket server running on port ${PORT}`)
 })
 

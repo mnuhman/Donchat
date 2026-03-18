@@ -375,13 +375,19 @@ export default function DonChat() {
   // Initialize socket when authenticated
   useEffect(() => {
     if (isAuthenticated && user) {
-      const socketInstance = io('/?XTransformPort=3003', {
+      // In production, use NEXT_PUBLIC_WEBSOCKET_URL
+      // In development, use local WebSocket with XTransformPort
+      const websocketUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || '/?XTransformPort=3003'
+      const isProduction = !!process.env.NEXT_PUBLIC_WEBSOCKET_URL
+      
+      const socketInstance = io(websocketUrl, {
         transports: ['websocket', 'polling'],
         forceNew: true,
         reconnection: true,
         reconnectionAttempts: 10,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
+        path: isProduction ? '/' : '/',
       })
 
       socketRef.current = socketInstance
