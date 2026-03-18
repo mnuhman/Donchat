@@ -5,6 +5,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import ZAI from 'z-ai-web-dev-sdk'
 
+export const runtime = 'nodejs'
+
+// Reuse ZAI instance across requests
+let zaiInstance: Awaited<ReturnType<typeof ZAI.create>> | null = null
+
+async function getZai() {
+  if (!zaiInstance) {
+    zaiInstance = await ZAI.create()
+  }
+  return zaiInstance
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { message, conversationId, history } = await request.json()
@@ -16,39 +28,39 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create AI instance
-    const zai = await ZAI.create()
+    const zai = await getZai()
 
     // Build conversation history for context
+    // Note: Use 'assistant' role for system prompts in this SDK
     const messages = [
       {
-        role: 'system',
+        role: 'assistant' as const,
         content: `You are Don AI, a helpful and friendly AI assistant for the Don Chat messaging app. 
-        You help users with their questions, provide information, and engage in friendly conversation.
-        Be concise but helpful in your responses. You can help with:
-        - General questions and information
-        - Coding and technical help
-        - Creative writing and ideas
-        - Casual conversation
-        Keep responses under 500 words unless more detail is needed.`
+You help users with their questions, provide information, and engage in friendly conversation.
+Be concise but helpful in your responses. You can help with:
+- General questions and information
+- Coding and technical help
+- Creative writing and ideas
+- Casual conversation
+Keep responses under 500 words unless more detail is needed.`
       },
       ...(history || []).map((msg: { role: string; content: string }) => ({
-        role: msg.role,
+        role: msg.role as 'user' | 'assistant',
         content: msg.content
       })),
       {
-        role: 'user',
+        role: 'user' as const,
         content: message
       }
     ]
 
-    // Call AI API
-    const response = await zai.llm.chat({
+    // Call AI API using correct method
+    const completion = await zai.chat.completions.create({
       messages: messages,
-      model: 'default'
+      thinking: { type: 'disabled' }
     })
 
-    const aiResponse = response.choices[0]?.message?.content || 'Sorry, I could not generate a response.'
+    const aiResponse = completion.choices[0]?.message?.content || 'Sorry, I could not generate a response.'
 
     return NextResponse.json({
       success: true,
@@ -58,7 +70,11 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('AI chat error:', error)
     return NextResponse.json(
-      { error: 'Failed to process AI chat' },
+      { 
+        success: false,
+        error: 'Failed to process AI chat',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     )
   }
