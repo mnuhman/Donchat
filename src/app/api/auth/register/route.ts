@@ -12,9 +12,9 @@ export const runtime = 'nodejs'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, email, password } = body
+    const { name, email, password, phone } = body
 
-    console.log('Register request received:', { name, email, hasPassword: !!password })
+    console.log('Register request received:', { name, email, phone, hasPassword: !!password })
 
     if (!name || !email || !password) {
       console.log('Missing required fields')
@@ -48,6 +48,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Phone validation (optional but if provided, must be valid)
+    if (phone && typeof phone === 'string') {
+      const phoneRegex = /^[+]?[(]?[0-9]{1,4}[)]?[-\s./0-9]*$/
+      if (phone.length < 10 || !phoneRegex.test(phone)) {
+        return NextResponse.json(
+          { error: 'Please enter a valid phone number' },
+          { status: 400 }
+        )
+      }
+    }
+
     const normalizedEmail = email.toLowerCase().trim()
 
     // Check if user exists
@@ -64,6 +75,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check if phone is already used (if provided)
+    if (phone) {
+      const existingPhone = await db.user.findFirst({
+        where: { phone: phone.trim() }
+      })
+      if (existingPhone) {
+        return NextResponse.json(
+          { error: 'An account with this phone number already exists' },
+          { status: 400 }
+        )
+      }
+    }
+
     // Create user
     console.log('Hashing password...')
     const hashedPassword = await hashPassword(password)
@@ -73,6 +97,7 @@ export async function POST(request: NextRequest) {
       data: {
         name: name.trim(),
         email: normalizedEmail,
+        phone: phone ? phone.trim() : null,
         password: hashedPassword,
         isOnline: true
       }
@@ -90,6 +115,7 @@ export async function POST(request: NextRequest) {
         id: user.id,
         name: user.name,
         email: user.email,
+        phone: user.phone,
         avatar: user.avatar,
         bio: user.bio
       }

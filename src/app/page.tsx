@@ -69,7 +69,9 @@ import {
   SmilePlus,
   Wifi,
   WifiOff,
-  AlertCircle
+  AlertCircle,
+  Eye,
+  EyeOff
 } from 'lucide-react'
 import {
   Dialog,
@@ -206,8 +208,13 @@ export default function DonChat() {
   
   // Auth state
   const [isLoading, setIsLoading] = useState(true)
-  const [authStep, setAuthStep] = useState<'email' | 'otp'>('email')
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
+  const [authStep, setAuthStep] = useState<'details' | 'otp'>('details')
+  const [authName, setAuthName] = useState('')
   const [authEmail, setAuthEmail] = useState('')
+  const [authPhone, setAuthPhone] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [authConfirmPassword, setAuthConfirmPassword] = useState('')
   const [authOtp, setAuthOtp] = useState('')
   const [authError, setAuthError] = useState('')
   const [isAuthLoading, setIsAuthLoading] = useState(false)
@@ -216,6 +223,8 @@ export default function DonChat() {
   const [canResendOtp, setCanResendOtp] = useState(false)
   const [autoLoginDetected, setAutoLoginDetected] = useState(false)
   const [deviceFingerprint, setDeviceFingerprint] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   
   // Chat state
   const [users, setUsers] = useState<ChatUser[]>([])
@@ -639,7 +648,18 @@ export default function DonChat() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
-  // Check email and send OTP
+  // Validate phone number
+  const validatePhone = (phone: string) => {
+    const phoneRegex = /^[+]?[(]?[0-9]{1,4}[)]?[-\s./0-9]*$/
+    return phone.length >= 10 && phoneRegex.test(phone)
+  }
+
+  // Validate password strength
+  const validatePassword = (password: string) => {
+    return password.length >= 6
+  }
+
+  // Check email and send OTP (for login)
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setAuthError('')
@@ -665,20 +685,77 @@ export default function DonChat() {
       setEmailExists(checkData.exists)
 
       if (checkData.exists) {
-        // Existing user - show auto-login indicator
-        setAutoLoginDetected(true)
-        
-        // Simulate auto-login (in production, verify trusted device)
-        setTimeout(() => {
-          // For now, still send OTP for security
-          void sendOtp()
-        }, 1500)
-      } else {
-        // New user - send OTP
+        // Existing user - send OTP
         await sendOtp()
+      } else {
+        // New user - show register option
+        setAuthError('No account found with this email. Please register first.')
+        setAuthMode('register')
       }
     } catch {
       setAuthError('Failed to check email. Please try again.')
+    } finally {
+      setIsAuthLoading(false)
+    }
+  }
+
+  // Handle registration form submit
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setAuthError('')
+    setIsAuthLoading(true)
+
+    // Validate all fields
+    if (!authName.trim() || authName.trim().length < 2) {
+      setAuthError('Please enter your full name (at least 2 characters)')
+      setIsAuthLoading(false)
+      return
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(authEmail)) {
+      setAuthError('Please enter a valid email address')
+      setIsAuthLoading(false)
+      return
+    }
+
+    if (!validatePhone(authPhone)) {
+      setAuthError('Please enter a valid phone number (at least 10 digits)')
+      setIsAuthLoading(false)
+      return
+    }
+
+    if (!validatePassword(authPassword)) {
+      setAuthError('Password must be at least 6 characters')
+      setIsAuthLoading(false)
+      return
+    }
+
+    if (authPassword !== authConfirmPassword) {
+      setAuthError('Passwords do not match')
+      setIsAuthLoading(false)
+      return
+    }
+
+    try {
+      // Check if email already exists
+      const checkRes = await fetch('/api/auth/check-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: authEmail })
+      })
+      const checkData = await checkRes.json()
+
+      if (checkData.exists) {
+        setAuthError('An account with this email already exists. Please login instead.')
+        setIsAuthLoading(false)
+        return
+      }
+
+      // Send OTP for registration
+      await sendOtp()
+    } catch {
+      setAuthError('Failed to process registration. Please try again.')
     } finally {
       setIsAuthLoading(false)
     }
@@ -690,7 +767,7 @@ export default function DonChat() {
       const res = await fetch('/api/auth/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: authEmail })
+        body: JSON.stringify({ email: authEmail, name: authName })
       })
 
       const data = await res.json()
@@ -703,7 +780,6 @@ export default function DonChat() {
       setAuthStep('otp')
       setOtpTimer(120) // 2 minutes
       setCanResendOtp(false)
-      setAutoLoginDetected(false)
       setAuthError('')
 
       toast({
@@ -728,6 +804,27 @@ export default function DonChat() {
     }
 
     try {
+      // For registration, create account first with password
+      if (authMode === 'register' && authPassword) {
+        const registerRes = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: authName,
+            email: authEmail,
+            phone: authPhone,
+            password: authPassword
+          })
+        })
+
+        if (!registerRes.ok) {
+          const regData = await registerRes.json()
+          setAuthError(regData.error || 'Failed to create account')
+          setIsAuthLoading(false)
+          return
+        }
+      }
+
       const res = await fetch('/api/auth/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -747,10 +844,7 @@ export default function DonChat() {
       }
 
       setUser(data.user)
-      setAuthEmail('')
-      setAuthOtp('')
-      setAuthStep('email')
-      setEmailExists(null)
+      resetAuthForm()
 
       toast({
         title: data.isNewUser ? 'Welcome to DonChat!' : 'Welcome back!',
@@ -761,6 +855,21 @@ export default function DonChat() {
     } finally {
       setIsAuthLoading(false)
     }
+  }
+
+  // Reset auth form
+  const resetAuthForm = () => {
+    setAuthName('')
+    setAuthEmail('')
+    setAuthPhone('')
+    setAuthPassword('')
+    setAuthConfirmPassword('')
+    setAuthOtp('')
+    setAuthStep('details')
+    setAuthMode('login')
+    setEmailExists(null)
+    setAuthError('')
+    setOtpTimer(0)
   }
 
   // Handle OTP input change
@@ -784,14 +893,19 @@ export default function DonChat() {
     await sendOtp()
   }
 
-  // Go back to email step
-  const handleBackToEmail = () => {
-    setAuthStep('email')
+  // Go back to details step
+  const handleBackToDetails = () => {
+    setAuthStep('details')
     setAuthOtp('')
     setAuthError('')
-    setEmailExists(null)
-    setAutoLoginDetected(false)
     setOtpTimer(0)
+  }
+
+  // Switch between login and register
+  const switchAuthMode = () => {
+    setAuthMode(authMode === 'login' ? 'register' : 'login')
+    setAuthError('')
+    setEmailExists(null)
   }
 
   const startConversation = async (recipient: ChatUser) => {
@@ -1478,93 +1592,206 @@ export default function DonChat() {
             </div>
 
             {/* Form Section - Right Side */}
-            <div className="flex flex-col justify-center p-8 md:p-16 lg:p-20 bg-white dark:bg-slate-900">
-              {/* Auto-login indicator */}
-              {autoLoginDetected ? (
-                <div className="text-center animate-fade-in">
-                  <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-4">
-                    <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
-                  </div>
-                  <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">Welcome back!</h2>
-                  <p className="text-slate-500 dark:text-slate-400">Recognizing you...</p>
-                </div>
-              ) : authStep === 'email' ? (
-                /* Email Step */
+            <div className="flex flex-col justify-center p-8 md:p-16 lg:p-20 bg-white dark:bg-slate-900 overflow-y-auto">
+              {authStep === 'details' ? (
+                /* Login/Register Details Step */
                 <>
-                  <div className="mb-10">
+                  <div className="mb-8">
                     <h2 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">
-                      Welcome to DonChat
+                      {authMode === 'login' ? 'Welcome to DonChat' : 'Create Account'}
                     </h2>
                     <p className="text-slate-500 dark:text-slate-400">
-                      Enter your email to continue
+                      {authMode === 'login' 
+                        ? 'Enter your email to continue' 
+                        : 'Fill in your details to get started'}
                     </p>
                   </div>
 
                   {authError && (
                     <div className="mb-6 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg p-3 text-red-600 dark:text-red-400 text-sm flex items-center gap-2">
-                      <AlertCircle className="h-4 w-4" />
-                      {authError}
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      <span>{authError}</span>
                     </div>
                   )}
 
-                  <form onSubmit={handleEmailSubmit} className="space-y-6">
-                    <div className="flex flex-col gap-2">
-                      <label className="text-slate-700 dark:text-slate-300 text-sm font-semibold">Email Address</label>
-                      <div className="relative">
-                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
-                        <input
-                          type="email"
-                          placeholder="you@example.com"
-                          value={authEmail}
-                          onChange={(e) => setAuthEmail(e.target.value)}
-                          required
-                          autoFocus
-                          className="w-full pl-12 pr-4 py-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all placeholder:text-slate-400"
-                        />
+                  {authMode === 'login' ? (
+                    /* Login Form */
+                    <form onSubmit={handleEmailSubmit} className="space-y-6">
+                      <div className="flex flex-col gap-2">
+                        <label className="text-slate-700 dark:text-slate-300 text-sm font-semibold">Email Address</label>
+                        <div className="relative">
+                          <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                          <input
+                            type="email"
+                            placeholder="you@example.com"
+                            value={authEmail}
+                            onChange={(e) => setAuthEmail(e.target.value)}
+                            required
+                            autoFocus
+                            className="w-full pl-12 pr-4 py-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all placeholder:text-slate-400"
+                          />
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Email detection message */}
-                    {emailExists !== null && (
-                      <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
-                        emailExists 
-                          ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' 
-                          : 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                      }`}>
-                        {emailExists ? (
+                      <button
+                        type="submit"
+                        disabled={isAuthLoading || !authEmail.trim()}
+                        className="w-full bg-emerald-500 text-white py-4 rounded-lg font-bold text-lg hover:bg-emerald-600 shadow-lg shadow-emerald-500/20 transform active:scale-[0.98] transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {isAuthLoading ? (
                           <>
-                            <CheckCircle2 className="h-4 w-4" />
-                            <span>Existing user - We&apos;ll log you in</span>
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                            Checking...
                           </>
                         ) : (
                           <>
-                            <User className="h-4 w-4" />
-                            <span>New user - Please verify your email</span>
+                            Continue
+                            <ArrowRight className="h-5 w-5" />
                           </>
                         )}
+                      </button>
+                    </form>
+                  ) : (
+                    /* Registration Form */
+                    <form onSubmit={handleRegisterSubmit} className="space-y-4">
+                      {/* Full Name */}
+                      <div className="flex flex-col gap-2">
+                        <label className="text-slate-700 dark:text-slate-300 text-sm font-semibold">Full Name</label>
+                        <div className="relative">
+                          <User className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                          <input
+                            type="text"
+                            placeholder="John Doe"
+                            value={authName}
+                            onChange={(e) => setAuthName(e.target.value)}
+                            required
+                            autoFocus
+                            className="w-full pl-12 pr-4 py-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all placeholder:text-slate-400"
+                          />
+                        </div>
                       </div>
-                    )}
 
-                    <button
-                      type="submit"
-                      disabled={isAuthLoading || !authEmail.trim()}
-                      className="w-full bg-emerald-500 text-white py-4 rounded-lg font-bold text-lg hover:bg-emerald-600 shadow-lg shadow-emerald-500/20 transform active:scale-[0.98] transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    >
-                      {isAuthLoading ? (
-                        <>
-                          <Loader2 className="h-5 w-5 animate-spin" />
-                          Checking...
-                        </>
-                      ) : (
-                        <>
-                          Continue
-                          <ArrowRight className="h-5 w-5" />
-                        </>
-                      )}
-                    </button>
-                  </form>
+                      {/* Email */}
+                      <div className="flex flex-col gap-2">
+                        <label className="text-slate-700 dark:text-slate-300 text-sm font-semibold">Email Address</label>
+                        <div className="relative">
+                          <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                          <input
+                            type="email"
+                            placeholder="you@example.com"
+                            value={authEmail}
+                            onChange={(e) => setAuthEmail(e.target.value)}
+                            required
+                            className="w-full pl-12 pr-4 py-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all placeholder:text-slate-400"
+                          />
+                        </div>
+                      </div>
 
-                  <p className="text-center text-slate-500 dark:text-slate-400 text-sm mt-8">
+                      {/* Phone Number */}
+                      <div className="flex flex-col gap-2">
+                        <label className="text-slate-700 dark:text-slate-300 text-sm font-semibold">Phone Number</label>
+                        <div className="relative">
+                          <Phone className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                          <input
+                            type="tel"
+                            placeholder="+1 234 567 8900"
+                            value={authPhone}
+                            onChange={(e) => setAuthPhone(e.target.value)}
+                            required
+                            className="w-full pl-12 pr-4 py-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all placeholder:text-slate-400"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Password */}
+                      <div className="flex flex-col gap-2">
+                        <label className="text-slate-700 dark:text-slate-300 text-sm font-semibold">Password</label>
+                        <div className="relative">
+                          <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                          <input
+                            type={showPassword ? "text" : "password"}
+                            placeholder="Min. 6 characters"
+                            value={authPassword}
+                            onChange={(e) => setAuthPassword(e.target.value)}
+                            required
+                            className="w-full pl-12 pr-12 py-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all placeholder:text-slate-400"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          >
+                            {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Confirm Password */}
+                      <div className="flex flex-col gap-2">
+                        <label className="text-slate-700 dark:text-slate-300 text-sm font-semibold">Confirm Password</label>
+                        <div className="relative">
+                          <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                          <input
+                            type={showConfirmPassword ? "text" : "password"}
+                            placeholder="Re-enter password"
+                            value={authConfirmPassword}
+                            onChange={(e) => setAuthConfirmPassword(e.target.value)}
+                            required
+                            className="w-full pl-12 pr-12 py-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all placeholder:text-slate-400"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          >
+                            {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                          </button>
+                        </div>
+                        {authConfirmPassword && authPassword && authConfirmPassword !== authPassword && (
+                          <p className="text-red-500 text-xs">Passwords do not match</p>
+                        )}
+                        {authConfirmPassword && authPassword && authConfirmPassword === authPassword && (
+                          <p className="text-emerald-500 text-xs flex items-center gap-1">
+                            <Check className="h-3 w-3" /> Passwords match
+                          </p>
+                        )}
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={isAuthLoading || !authName || !authEmail || !authPhone || !authPassword || !authConfirmPassword}
+                        className="w-full bg-emerald-500 text-white py-4 rounded-lg font-bold text-lg hover:bg-emerald-600 shadow-lg shadow-emerald-500/20 transform active:scale-[0.98] transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-6"
+                      >
+                        {isAuthLoading ? (
+                          <>
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                            Creating Account...
+                          </>
+                        ) : (
+                          <>
+                            Create Account
+                            <ArrowRight className="h-5 w-5" />
+                          </>
+                        )}
+                      </button>
+                    </form>
+                  )}
+
+                  {/* Switch between Login and Register */}
+                  <div className="mt-6 text-center">
+                    <p className="text-slate-500 dark:text-slate-400">
+                      {authMode === 'login' ? "Don't have an account? " : "Already have an account? "}
+                      <button
+                        type="button"
+                        onClick={switchAuthMode}
+                        className="text-emerald-600 font-semibold hover:underline"
+                      >
+                        {authMode === 'login' ? 'Sign Up' : 'Sign In'}
+                      </button>
+                    </p>
+                  </div>
+
+                  <p className="text-center text-slate-500 dark:text-slate-400 text-sm mt-6">
                     By continuing, you agree to our{' '}
                     <a className="text-emerald-600 font-medium hover:underline">Terms of Service</a>
                     {' '}and{' '}
@@ -1572,10 +1799,10 @@ export default function DonChat() {
                   </p>
                 </>
               ) : (
-                /* OTP Step */
+                /* OTP Verification Step */
                 <>
                   <button
-                    onClick={handleBackToEmail}
+                    onClick={handleBackToDetails}
                     className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 mb-6 transition-colors"
                   >
                     <ChevronLeft className="h-4 w-4" />
@@ -1651,7 +1878,7 @@ export default function DonChat() {
 
                   {/* Development hint */}
                   <p className="mt-4 text-xs text-center text-slate-400">
-                    Check console for OTP code
+                    Check your email inbox or console for OTP code
                   </p>
                 </>
               )}
