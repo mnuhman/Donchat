@@ -8,8 +8,15 @@ import { Resend } from 'resend'
 
 export const runtime = 'nodejs'
 
-// Initialize Resend with API key from environment
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Initialize Resend lazily - only when needed
+let resend: Resend | null = null
+
+function getResendClient(): Resend | null {
+  if (!resend && process.env.RESEND_API_KEY) {
+    resend = new Resend(process.env.RESEND_API_KEY)
+  }
+  return resend
+}
 
 // Generate 6-digit OTP
 function generateOTP(): string {
@@ -20,8 +27,20 @@ function generateOTP(): string {
 async function sendOTPEmail(email: string, otp: string, name?: string): Promise<void> {
   const userName = name || email.split('@')[0]
   
+  // Try to get Resend client
+  const resendClient = getResendClient()
+  
+  // If no API key, just log the OTP
+  if (!resendClient) {
+    console.log(`\n========================================`)
+    console.log(`OTP for ${email}: ${otp}`)
+    console.log(`(RESEND_API_KEY not configured)`)
+    console.log(`========================================\n`)
+    return
+  }
+  
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await resendClient.emails.send({
       from: 'DonChat <onboarding@resend.dev>',
       to: email,
       subject: 'Your DonChat Verification Code',
@@ -90,7 +109,7 @@ If you didn't request this code, you can safely ignore this email.
 
     if (error) {
       console.error('Resend email error:', error)
-      // Fall back to console log in development
+      // Fall back to console log
       console.log(`\n========================================`)
       console.log(`OTP for ${email}: ${otp}`)
       console.log(`========================================\n`)
