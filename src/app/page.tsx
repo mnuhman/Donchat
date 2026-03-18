@@ -1000,9 +1000,9 @@ export default function DonChat() {
   // Chat interface - WhatsApp Style
   return (
     <div className="h-screen w-full overflow-hidden bg-slate-100 dark:bg-slate-950 font-sans">
-      <div className="flex h-full w-full overflow-hidden">
-        {/* Left Narrow Nav */}
-        <aside className="w-20 flex flex-col items-center py-4 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+      <div className="flex h-full w-full overflow-hidden relative pb-14 lg:pb-0">
+        {/* Left Narrow Nav - Hidden on mobile/tablet, shown on desktop (lg+) */}
+        <aside className="hidden lg:flex w-20 flex-col items-center py-4 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
           <div className="mb-8">
             <div className="size-12 rounded-xl bg-emerald-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
               <MessageCircle className="h-6 w-6" />
@@ -1012,7 +1012,7 @@ export default function DonChat() {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button className="text-emerald-600 bg-emerald-500/10 p-3 rounded-xl">
+                  <button className="text-emerald-600 bg-emerald-500/10 p-3 rounded-xl min-h-12 min-w-12">
                     <MessageCircle className="h-5 w-5" />
                   </button>
                 </TooltipTrigger>
@@ -1022,7 +1022,7 @@ export default function DonChat() {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button className="text-slate-400 hover:text-emerald-600 hover:bg-emerald-500/5 transition-colors p-3 rounded-xl">
+                  <button className="text-slate-400 hover:text-emerald-600 hover:bg-emerald-500/5 transition-colors p-3 rounded-xl min-h-12 min-w-12">
                     <Users className="h-5 w-5" />
                   </button>
                 </TooltipTrigger>
@@ -1032,7 +1032,7 @@ export default function DonChat() {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button className="text-slate-400 hover:text-emerald-600 hover:bg-emerald-500/5 transition-colors p-3 rounded-xl">
+                  <button className="text-slate-400 hover:text-emerald-600 hover:bg-emerald-500/5 transition-colors p-3 rounded-xl min-h-12 min-w-12">
                     <Hash className="h-5 w-5" />
                   </button>
                 </TooltipTrigger>
@@ -1042,7 +1042,7 @@ export default function DonChat() {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button className="text-slate-400 hover:text-emerald-600 hover:bg-emerald-500/5 transition-colors p-3 rounded-xl">
+                  <button className="text-slate-400 hover:text-emerald-600 hover:bg-emerald-500/5 transition-colors p-3 rounded-xl min-h-12 min-w-12">
                     <Archive className="h-5 w-5" />
                   </button>
                 </TooltipTrigger>
@@ -1056,7 +1056,7 @@ export default function DonChat() {
                 <TooltipTrigger asChild>
                   <button 
                     onClick={() => setIsDarkMode(!isDarkMode)}
-                    className="text-slate-400 hover:text-emerald-600 hover:bg-emerald-500/5 transition-colors p-3 rounded-xl"
+                    className="text-slate-400 hover:text-emerald-600 hover:bg-emerald-500/5 transition-colors p-3 rounded-xl min-h-12 min-w-12"
                   >
                     {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
                   </button>
@@ -1069,7 +1069,7 @@ export default function DonChat() {
                 <TooltipTrigger asChild>
                   <button 
                     onClick={openProfile}
-                    className="text-slate-400 hover:text-emerald-600 hover:bg-emerald-500/5 transition-colors p-3 rounded-xl"
+                    className="text-slate-400 hover:text-emerald-600 hover:bg-emerald-500/5 transition-colors p-3 rounded-xl min-h-12 min-w-12"
                   >
                     <Settings className="h-5 w-5" />
                   </button>
@@ -1082,7 +1082,7 @@ export default function DonChat() {
                 <TooltipTrigger asChild>
                   <button 
                     onClick={handleLogout}
-                    className="text-slate-400 hover:text-red-500 hover:bg-red-500/5 transition-colors p-3 rounded-xl"
+                    className="text-slate-400 hover:text-red-500 hover:bg-red-500/5 transition-colors p-3 rounded-xl min-h-12 min-w-12"
                   >
                     <LogOut className="h-5 w-5" />
                   </button>
@@ -1105,8 +1105,8 @@ export default function DonChat() {
           </div>
         </aside>
 
-        {/* Conversation List Sidebar */}
-        <section className={`${showMobileChat ? 'hidden md:flex' : 'flex'} w-80 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex-col`}>
+        {/* Conversation List Sidebar - Full width on mobile, fixed width on tablet/desktop */}
+        <section className={`${showMobileChat ? 'hidden md:flex' : 'flex'} w-full md:w-80 lg:w-80 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex-col absolute md:relative inset-0 md:inset-auto z-20 md:z-auto`}>
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">Chats</h1>
@@ -1120,9 +1120,9 @@ export default function DonChat() {
                     <TooltipTrigger asChild>
                       <button 
                         onClick={() => setShowNewChatDialog(true)}
-                        className="size-8 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center hover:bg-emerald-500/20 transition-colors"
+                        className="size-11 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center hover:bg-emerald-500/20 transition-colors"
                       >
-                        <Plus className="h-4 w-4" />
+                        <Plus className="h-5 w-5" />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>New Chat</TooltipContent>
@@ -1265,18 +1265,18 @@ export default function DonChat() {
           </div>
         </section>
 
-        {/* Main Chat Area */}
-        <main className={`${showMobileChat ? 'flex' : 'hidden md:flex'} flex-1 flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden`}>
+        {/* Main Chat Area - Full width on mobile when chat selected */}
+        <main className={`${showMobileChat ? 'flex' : 'hidden md:flex'} flex-1 flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden absolute md:relative inset-0 md:inset-auto z-10 md:z-auto`}>
           {selectedUser ? (
             <>
               {/* Chat Header */}
-              <header className="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 bg-white dark:bg-slate-900 z-10">
-                <div className="flex items-center gap-3">
+              <header className="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-2 sm:px-4 bg-white dark:bg-slate-900 z-10">
+                <div className="flex items-center gap-2 sm:gap-3">
                   <button
                     onClick={() => setShowMobileChat(false)}
-                    className="md:hidden text-slate-600 dark:text-slate-400"
+                    className="md:hidden size-11 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
                   >
-                    <ChevronLeft className="h-5 w-5" />
+                    <ChevronLeft className="h-6 w-6" />
                   </button>
                   <div className="relative">
                     {selectedUser.avatar ? (
@@ -1297,19 +1297,19 @@ export default function DonChat() {
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <button className="size-9 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
+                <div className="flex items-center gap-0.5 sm:gap-1">
+                  <button className="size-11 sm:size-9 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
                     <Video className="h-5 w-5" />
                   </button>
-                  <button className="size-9 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
+                  <button className="size-11 sm:size-9 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
                     <Phone className="h-5 w-5" />
                   </button>
-                  <button className="size-9 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
+                  <button className="size-11 sm:size-9 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
                     <Search className="h-5 w-5" />
                   </button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <button className="size-9 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
+                      <button className="size-11 sm:size-9 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
                         <MoreVertical className="h-5 w-5" />
                       </button>
                     </DropdownMenuTrigger>
@@ -1538,13 +1538,13 @@ export default function DonChat() {
               )}
 
               {/* Message Input */}
-              <footer className="p-3 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-2">
+              <footer className="p-2 sm:p-3 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-1 sm:gap-2">
                   {/* Emoji Picker */}
                   <div className="relative" ref={emojiPickerRef}>
                     <button 
                       onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                      className="size-10 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                      className="size-11 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                     >
                       <Smile className="h-5 w-5" />
                     </button>
@@ -1558,7 +1558,7 @@ export default function DonChat() {
                                 <button
                                   key={idx}
                                   onClick={() => insertEmoji(emoji)}
-                                  className="size-7 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-lg"
+                                  className="size-9 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-base"
                                 >
                                   {emoji}
                                 </button>
@@ -1572,14 +1572,14 @@ export default function DonChat() {
                   
                   <button 
                     onClick={() => fileInputRef.current?.click()}
-                    className="size-10 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                    className="size-11 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                   >
                     <Paperclip className="h-5 w-5" />
                   </button>
                   <input ref={fileInputRef} type="file" className="hidden" />
                   
                   <input 
-                    className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full px-4 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full px-4 py-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 min-h-11"
                     placeholder={isAiChat ? "Ask Don AI..." : "Type a message..."}
                     type="text"
                     value={inputMessage}
@@ -1588,14 +1588,14 @@ export default function DonChat() {
                     disabled={isAiThinking}
                   />
                   
-                  <button className="size-10 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+                  <button className="size-11 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
                     <Mic className="h-5 w-5" />
                   </button>
                   
                   <button 
                     onClick={isAiChat ? sendAiMessage : sendMessage}
                     disabled={!inputMessage.trim() || (isAiChat && isAiThinking)}
-                    className="size-10 flex items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                    className="size-11 flex items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-colors disabled:opacity-50"
                   >
                     <Send className="h-5 w-5" />
                   </button>
@@ -1616,7 +1616,7 @@ export default function DonChat() {
           )}
         </main>
 
-        {/* Right Sidebar - Contact Info */}
+        {/* Right Sidebar - Contact Info - Only shown on xl screens */}
         {selectedUser && showRightSidebar && (
           <aside className="w-80 border-l border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 hidden xl:flex flex-col">
             <div className="flex-1 overflow-y-auto">
@@ -1698,6 +1698,47 @@ export default function DonChat() {
           </aside>
         )}
       </div>
+
+      {/* Mobile Bottom Navigation Bar - Only visible on mobile (< lg) */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-2 py-1 safe-area-inset-bottom z-50">
+        <div className="flex items-center justify-around">
+          <button 
+            onClick={() => { setShowMobileChat(false); setIsAiChat(false); }}
+            className="flex flex-col items-center justify-center gap-0.5 p-2 min-h-12 min-w-12 rounded-xl transition-colors text-emerald-600"
+          >
+            <MessageCircle className="h-5 w-5" />
+            <span className="text-[10px] font-medium">Chats</span>
+          </button>
+          <button 
+            onClick={() => setShowMobileChat(false)}
+            className="flex flex-col items-center justify-center gap-0.5 p-2 min-h-12 min-w-12 rounded-xl transition-colors text-slate-400 hover:text-emerald-600"
+          >
+            <Users className="h-5 w-5" />
+            <span className="text-[10px] font-medium">Groups</span>
+          </button>
+          <button 
+            onClick={() => startAiChat()}
+            className="flex flex-col items-center justify-center gap-0.5 p-2 min-h-12 min-w-12 rounded-xl transition-colors text-slate-400 hover:text-emerald-600"
+          >
+            <Bot className="h-5 w-5" />
+            <span className="text-[10px] font-medium">AI</span>
+          </button>
+          <button 
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className="flex flex-col items-center justify-center gap-0.5 p-2 min-h-12 min-w-12 rounded-xl transition-colors text-slate-400 hover:text-emerald-600"
+          >
+            {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            <span className="text-[10px] font-medium">{isDarkMode ? 'Light' : 'Dark'}</span>
+          </button>
+          <button 
+            onClick={openProfile}
+            className="flex flex-col items-center justify-center gap-0.5 p-2 min-h-12 min-w-12 rounded-xl transition-colors text-slate-400 hover:text-emerald-600"
+          >
+            <Settings className="h-5 w-5" />
+            <span className="text-[10px] font-medium">Settings</span>
+          </button>
+        </div>
+      </nav>
 
       {/* Logout Confirmation Dialog */}
       <AlertDialog open={showLogoutConfirm} onOpenChange={setShowLogoutConfirm}>
