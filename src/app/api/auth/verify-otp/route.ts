@@ -136,9 +136,9 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Set session cookie
+    // Set session cookie - must use 'donchat_session' to match lib/auth.ts
     const cookieStore = await cookies()
-    cookieStore.set('session_token', sessionToken, {
+    cookieStore.set('donchat_session', user.id, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -146,8 +146,8 @@ export async function POST(request: NextRequest) {
       path: '/'
     })
 
-    // Also set auth token for compatibility
-    cookieStore.set('auth_token', sessionToken, {
+    // Also set session token for additional verification
+    cookieStore.set('session_token', sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',

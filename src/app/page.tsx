@@ -789,7 +789,6 @@ export default function DonChat() {
   }
 
   const startConversation = async (recipient: ChatUser) => {
-    setSelectedUser(recipient)
     setIsAiChat(false)
     setAiMessages([])
     
@@ -803,13 +802,27 @@ export default function DonChat() {
       if (res.ok) {
         const data = await res.json()
         setSelectedConversation(data.conversation)
+        setSelectedUser(recipient)
         setMessages([])
         void fetchMessages(data.conversation.id)
         void fetchConversations()
         setShowMobileChat(true)
+      } else {
+        const errorData = await res.json().catch(() => ({}))
+        console.error('Failed to start conversation:', errorData)
+        toast({ 
+          title: 'Error', 
+          description: 'Failed to start conversation. Please try again.',
+          variant: 'destructive'
+        })
       }
     } catch (error) {
       console.error('Failed to start conversation:', error)
+      toast({ 
+        title: 'Error', 
+        description: 'Network error. Please check your connection.',
+        variant: 'destructive'
+      })
     }
   }
 
@@ -824,7 +837,26 @@ export default function DonChat() {
   }
 
   const sendMessage = useCallback(async () => {
-    if (!inputMessage.trim() || !user || !selectedConversation || !selectedUser) return
+    // Debug: Log why message might not send
+    if (!inputMessage.trim()) {
+      console.log('sendMessage: No input message')
+      return
+    }
+    if (!user) {
+      console.log('sendMessage: No user')
+      toast({ title: 'Error', description: 'Please login to send messages', variant: 'destructive' })
+      return
+    }
+    if (!selectedConversation) {
+      console.log('sendMessage: No conversation selected')
+      toast({ title: 'Error', description: 'Please select a chat first', variant: 'destructive' })
+      return
+    }
+    if (!selectedUser) {
+      console.log('sendMessage: No user selected')
+      toast({ title: 'Error', description: 'Please select a user to message', variant: 'destructive' })
+      return
+    }
 
     const messageContent = inputMessage.trim()
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
