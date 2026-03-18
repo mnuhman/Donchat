@@ -66,7 +66,10 @@ import {
   Edit3,
   CheckCircle2,
   Clock,
-  SmilePlus
+  SmilePlus,
+  Wifi,
+  WifiOff,
+  AlertCircle
 } from 'lucide-react'
 import {
   Dialog,
@@ -97,10 +100,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useToast } from '@/hooks/use-toast'
+import { Toaster } from '@/components/ui/toaster'
 
 // Types
 interface Message {
   id: string
+  tempId?: string // Temporary ID for optimistic updates
   content: string
   type: string
   mediaUrl?: string
@@ -115,12 +121,14 @@ interface Message {
   readBy?: string
   createdAt: string
   updatedAt: string
+  status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed'
   reactions: MessageReaction[]
   sender: {
     id: string
     name: string
     avatar?: string | null
   }
+  _optimistic?: boolean // Flag for optimistic UI updates
 }
 
 interface MessageReaction {
@@ -159,10 +167,20 @@ interface Conversation {
 
 interface SocketMessage {
   id: string
+  tempId?: string
   content: string
   senderId: string
   senderName: string
   receiverId: string
+  conversationId: string
+  timestamp: string
+  status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed'
+}
+
+interface MessageStatus {
+  messageId: string
+  tempId?: string
+  status: 'sent' | 'delivered' | 'read' | 'failed'
   conversationId: string
   timestamp: string
 }
@@ -184,15 +202,20 @@ const MESSAGE_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏']
 
 export default function DonChat() {
   const { user, isAuthenticated, setUser, logout } = useAuthStore()
+  const { toast } = useToast()
   
   // Auth state
   const [isLoading, setIsLoading] = useState(true)
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
-  const [authName, setAuthName] = useState('')
+  const [authStep, setAuthStep] = useState<'email' | 'otp'>('email')
   const [authEmail, setAuthEmail] = useState('')
-  const [authPassword, setAuthPassword] = useState('')
+  const [authOtp, setAuthOtp] = useState('')
   const [authError, setAuthError] = useState('')
   const [isAuthLoading, setIsAuthLoading] = useState(false)
+  const [emailExists, setEmailExists] = useState<boolean | null>(null)
+  const [otpTimer, setOtpTimer] = useState(0)
+  const [canResendOtp, setCanResendOtp] = useState(false)
+  const [autoLoginDetected, setAutoLoginDetected] = useState(false)
+  const [deviceFingerprint, setDeviceFingerprint] = useState('')
   
   // Chat state
   const [users, setUsers] = useState<ChatUser[]>([])
@@ -207,6 +230,8 @@ export default function DonChat() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showMobileChat, setShowMobileChat] = useState(false)
   const [showRightSidebar, setShowRightSidebar] = useState(true)
+  const [showNewMessageBadge, setShowNewMessageBadge] = useState(false)
+  const [isAtBottom, setIsAtBottom] = useState(true)
   
   // AI Chat state
   const [isAiChat, setIsAiChat] = useState(false)
@@ -236,6 +261,23 @@ export default function DonChat() {
   const [showNewChatDialog, setShowNewChatDialog] = useState(false)
   const [newChatType, setNewChatType] = useState<'PRIVATE' | 'GROUP' | 'BROADCAST' | 'SECRET'>('PRIVATE')
   const [newChatName, setNewChatName] = useState('')
+  
+  // Delete confirmation states
+  const [showDeleteMessageConfirm, setShowDeleteMessageConfirm] = useState(false)
+  const [messageToDelete, setMessageToDelete] = useState<Message | null>(null)
+  const [showDeleteChatConfirm, setShowDeleteChatConfirm] = useState(false)
+  const [starredMessages, setStarredMessages] = useState<Set<string>>(new Set())
+  const [isMuted, setIsMuted] = useState(false)
+  const [isBlocked, setIsBlocked] = useState(false)
+  
+  // Real-time messaging states
+  const [pendingMessages, setPendingMessages] = useState<Map<string, Message>>(new Map())
+  const [offlineQueue, setOfflineQueue] = useState<Message[]>([])
+  const [connectionQuality, setConnectionQuality] = useState<'excellent' | 'good' | 'poor' | 'disconnected'>('excellent')
+  
+  // Scroll-based navbar state
+  const [isNavbarVisible, setIsNavbarVisible] = useState(true)
+  const [lastScrollY, setLastScrollY] = useState(0)
   
   const socketRef = useRef<Socket | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -337,20 +379,48 @@ export default function DonChat() {
         transports: ['websocket', 'polling'],
         forceNew: true,
         reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
       })
 
       socketRef.current = socketInstance
 
       socketInstance.on('connect', () => {
         setIsConnected(true)
+        setConnectionQuality('excellent')
         socketInstance.emit('user:join', { 
           userId: user.id,
           username: user.name,
         })
+        
+        // Process offline queue when reconnected
+        if (offlineQueue.length > 0) {
+          offlineQueue.forEach(msg => {
+            socketInstance.emit('message:private', {
+              content: msg.content,
+              senderId: msg.senderId,
+              senderName: user.name,
+              receiverId: msg.receiverId,
+              conversationId: msg.conversationId,
+              tempId: msg.tempId
+            })
+          })
+          setOfflineQueue([])
+        }
       })
 
       socketInstance.on('disconnect', () => {
         setIsConnected(false)
+        setConnectionQuality('disconnected')
+      })
+
+      socketInstance.on('connect_error', () => {
+        setConnectionQuality('poor')
+      })
+
+      socketInstance.on('reconnect_attempt', (attemptNumber) => {
+        setConnectionQuality(attemptNumber > 3 ? 'poor' : 'good')
       })
 
       socketInstance.on('users:online', (onlineUsersList: OnlineUser[]) => {
@@ -369,17 +439,55 @@ export default function DonChat() {
         ))
       })
 
-      socketInstance.on('user:offline', (data: { userId: string }) => {
+      socketInstance.on('user:offline', (data: { userId: string; lastSeen?: string }) => {
         setOnlineUsers(prev => prev.filter(u => u.id !== data.userId))
         setUsers(prev => prev.map(u => 
-          u.id === data.userId ? { ...u, isOnline: false, lastSeen: new Date().toISOString() } : u
+          u.id === data.userId ? { ...u, isOnline: false, lastSeen: data.lastSeen || new Date().toISOString() } : u
         ))
       })
 
+      // Handle message confirmation from server
+      socketInstance.on('message:confirmed', (data: { tempId: string; message: SocketMessage; status: string }) => {
+        // Remove from pending and add to messages
+        setPendingMessages(prev => {
+          const newMap = new Map(prev)
+          newMap.delete(data.tempId)
+          return newMap
+        })
+        
+        // Update the message with real ID and status
+        setMessages(prev => prev.map(msg => {
+          if (msg.tempId === data.tempId) {
+            return {
+              ...msg,
+              id: data.message.id,
+              status: 'sent',
+              _optimistic: false
+            }
+          }
+          return msg
+        }))
+      })
+
+      // Handle message status updates (delivered, read)
+      socketInstance.on('message:status', (data: MessageStatus) => {
+        setMessages(prev => prev.map(msg => {
+          if (msg.id === data.messageId || msg.tempId === data.tempId) {
+            return { ...msg, status: data.status }
+          }
+          return msg
+        }))
+      })
+
+      // Handle incoming messages
       socketInstance.on('message:received', (msg: SocketMessage) => {
-        if (selectedConversation?.id === msg.conversationId) {
+        // Check if message already exists (avoid duplicates)
+        const messageExists = messages.some(m => m.id === msg.id)
+        
+        if (!messageExists) {
           const newMessage: Message = {
             id: msg.id,
+            tempId: msg.tempId,
             content: msg.content,
             type: 'TEXT',
             senderId: msg.senderId,
@@ -389,17 +497,43 @@ export default function DonChat() {
             updatedAt: msg.timestamp,
             isEdited: false,
             isForwarded: false,
+            status: msg.status || 'delivered',
             reactions: [],
             sender: {
               id: msg.senderId,
               name: msg.senderName,
             }
           }
+          
+          // Add message with animation
           setMessages(prev => [...prev, newMessage])
+          
+          // Send read receipt if chat is active and user is at bottom
+          if (selectedConversation?.id === msg.conversationId && isAtBottom) {
+            socketInstance.emit('message:read', {
+              messageId: msg.id,
+              conversationId: msg.conversationId,
+              readerId: user.id,
+              senderId: msg.senderId
+            })
+          } else if (selectedConversation?.id === msg.conversationId && !isAtBottom) {
+            setShowNewMessageBadge(true)
+          }
         }
         void fetchConversations()
       })
 
+      // Handle messages read event
+      socketInstance.on('messages:read', (data: { messageIds: string[]; status: string; conversationId: string; timestamp: string }) => {
+        setMessages(prev => prev.map(msg => {
+          if (data.messageIds.includes(msg.id)) {
+            return { ...msg, status: 'read' }
+          }
+          return msg
+        }))
+      })
+
+      // Handle typing indicator
       socketInstance.on('typing:indicator', (data: { userId: string; userName: string; isTyping: boolean }) => {
         if (data.isTyping && data.userId !== user?.id) {
           setTypingUser({ userId: data.userId, userName: data.userName })
@@ -408,11 +542,19 @@ export default function DonChat() {
         }
       })
 
+      // Heartbeat for connection health
+      const heartbeatInterval = setInterval(() => {
+        if (socketInstance.connected) {
+          socketInstance.emit('heartbeat', { userId: user.id })
+        }
+      }, 30000)
+
       return () => {
+        clearInterval(heartbeatInterval)
         socketInstance.disconnect()
       }
     }
-  }, [isAuthenticated, user, selectedConversation?.id, fetchConversations])
+  }, [isAuthenticated, user, selectedConversation?.id, fetchConversations, offlineQueue, isAtBottom, messages])
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -431,71 +573,219 @@ export default function DonChat() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Handle login
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setAuthError('')
-    setIsAuthLoading(true)
-
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: authEmail, password: authPassword })
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        setAuthError(data.error || 'Login failed')
-        return
+  // Scroll-based navbar hide/show
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY
+      
+      if (currentScrollY < 10) {
+        // At the top, always show navbar
+        setIsNavbarVisible(true)
+      } else if (currentScrollY > lastScrollY && currentScrollY > 50) {
+        // Scrolling down & past threshold, hide navbar
+        setIsNavbarVisible(false)
+      } else if (currentScrollY < lastScrollY) {
+        // Scrolling up, show navbar
+        setIsNavbarVisible(true)
       }
-
-      setUser(data.user)
-      setAuthEmail('')
-      setAuthPassword('')
-    } catch {
-      setAuthError('Failed to login. Please try again.')
-    } finally {
-      setIsAuthLoading(false)
+      
+      setLastScrollY(currentScrollY)
     }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [lastScrollY])
+
+  // Generate device fingerprint
+  const generateDeviceFingerprint = useCallback(() => {
+    const components = [
+      navigator.userAgent,
+      navigator.language,
+      screen.colorDepth.toString(),
+      `${screen.width}x${screen.height}`,
+      new Date().getTimezoneOffset().toString(),
+      navigator.hardwareConcurrency?.toString() || 'unknown'
+    ]
+    return btoa(components.join('|')).substring(0, 32)
+  }, [])
+
+  // Initialize device fingerprint on mount
+  useEffect(() => {
+    setDeviceFingerprint(generateDeviceFingerprint())
+  }, [generateDeviceFingerprint])
+
+  // OTP Timer countdown
+  useEffect(() => {
+    if (otpTimer > 0) {
+      const timer = setTimeout(() => {
+        setOtpTimer(otpTimer - 1)
+      }, 1000)
+      return () => clearTimeout(timer)
+    } else if (otpTimer === 0 && authStep === 'otp') {
+      setCanResendOtp(true)
+    }
+  }, [otpTimer, authStep])
+
+  // Format timer as MM:SS
+  const formatTimer = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
-  // Handle register
-  const handleRegister = async (e: React.FormEvent) => {
+  // Check email and send OTP
+  const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setAuthError('')
     setIsAuthLoading(true)
 
-    if (authPassword.length < 6) {
-      setAuthError('Password must be at least 6 characters')
+    // Validate email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(authEmail)) {
+      setAuthError('Please enter a valid email address')
       setIsAuthLoading(false)
       return
     }
 
     try {
-      const res = await fetch('/api/auth/register', {
+      // Check if email exists
+      const checkRes = await fetch('/api/auth/check-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: authName, email: authEmail, password: authPassword })
+        body: JSON.stringify({ email: authEmail })
+      })
+      const checkData = await checkRes.json()
+
+      setEmailExists(checkData.exists)
+
+      if (checkData.exists) {
+        // Existing user - show auto-login indicator
+        setAutoLoginDetected(true)
+        
+        // Simulate auto-login (in production, verify trusted device)
+        setTimeout(() => {
+          // For now, still send OTP for security
+          void sendOtp()
+        }, 1500)
+      } else {
+        // New user - send OTP
+        await sendOtp()
+      }
+    } catch {
+      setAuthError('Failed to check email. Please try again.')
+    } finally {
+      setIsAuthLoading(false)
+    }
+  }
+
+  // Send OTP
+  const sendOtp = async () => {
+    try {
+      const res = await fetch('/api/auth/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: authEmail })
       })
 
       const data = await res.json()
 
       if (!res.ok) {
-        setAuthError(data.error || 'Registration failed')
+        setAuthError(data.error || 'Failed to send OTP')
+        return
+      }
+
+      setAuthStep('otp')
+      setOtpTimer(120) // 2 minutes
+      setCanResendOtp(false)
+      setAutoLoginDetected(false)
+      setAuthError('')
+
+      toast({
+        title: 'OTP Sent',
+        description: `Verification code sent to ${authEmail}`
+      })
+    } catch {
+      setAuthError('Failed to send OTP. Please try again.')
+    }
+  }
+
+  // Verify OTP
+  const handleVerifyOtp = async (e?: React.FormEvent) => {
+    e?.preventDefault()
+    setAuthError('')
+    setIsAuthLoading(true)
+
+    if (authOtp.length !== 6) {
+      setAuthError('Please enter a valid 6-digit code')
+      setIsAuthLoading(false)
+      return
+    }
+
+    try {
+      const res = await fetch('/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          email: authEmail, 
+          otp: authOtp,
+          deviceFingerprint,
+          rememberDevice: true
+        })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        setAuthError(data.error || 'Verification failed')
         return
       }
 
       setUser(data.user)
-      setAuthName('')
       setAuthEmail('')
-      setAuthPassword('')
+      setAuthOtp('')
+      setAuthStep('email')
+      setEmailExists(null)
+
+      toast({
+        title: data.isNewUser ? 'Welcome to DonChat!' : 'Welcome back!',
+        description: data.isNewUser ? 'Your account has been created' : 'Successfully logged in'
+      })
     } catch {
-      setAuthError('Failed to create account. Please try again.')
+      setAuthError('Verification failed. Please try again.')
     } finally {
       setIsAuthLoading(false)
     }
+  }
+
+  // Handle OTP input change
+  const handleOtpChange = (value: string) => {
+    const numericValue = value.replace(/[^0-9]/g, '').slice(0, 6)
+    setAuthOtp(numericValue)
+    
+    // Auto-verify when 6 digits entered
+    if (numericValue.length === 6) {
+      setTimeout(() => {
+        void handleVerifyOtp()
+      }, 100)
+    }
+  }
+
+  // Resend OTP
+  const handleResendOtp = async () => {
+    setCanResendOtp(false)
+    setOtpTimer(120)
+    setAuthOtp('')
+    await sendOtp()
+  }
+
+  // Go back to email step
+  const handleBackToEmail = () => {
+    setAuthStep('email')
+    setAuthOtp('')
+    setAuthError('')
+    setEmailExists(null)
+    setAutoLoginDetected(false)
+    setOtpTimer(0)
   }
 
   const startConversation = async (recipient: ChatUser) => {
@@ -534,19 +824,63 @@ export default function DonChat() {
   }
 
   const sendMessage = useCallback(async () => {
-    if (!inputMessage.trim() || !socketRef.current || !user || !selectedConversation || !selectedUser) return
+    if (!inputMessage.trim() || !user || !selectedConversation || !selectedUser) return
 
     const messageContent = inputMessage.trim()
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    
+    // Create optimistic message
+    const optimisticMessage: Message = {
+      id: tempId,
+      tempId,
+      content: messageContent,
+      type: 'TEXT',
+      senderId: user.id,
+      receiverId: selectedUser.id,
+      conversationId: selectedConversation.id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      isEdited: false,
+      isForwarded: false,
+      status: 'sending',
+      reactions: [],
+      _optimistic: true,
+      sender: {
+        id: user.id,
+        name: user.name,
+        avatar: user.avatar
+      }
+    }
+    
+    // Add message to UI immediately (optimistic update)
+    setMessages(prev => [...prev, optimisticMessage])
     setInputMessage('')
     setReplyingTo(null)
+    
+    // Stop typing indicator
+    if (socketRef.current) {
+      socketRef.current.emit('typing:stop', {
+        conversationId: selectedConversation.id,
+        userId: user.id,
+        userName: user.name
+      })
+    }
 
-    socketRef.current.emit('typing:stop', {
-      conversationId: selectedConversation.id,
-      userId: user.id,
-      userName: user.name
-    })
+    // Check if connected
+    if (!isConnected || !socketRef.current) {
+      // Add to offline queue
+      setOfflineQueue(prev => [...prev, optimisticMessage])
+      setPendingMessages(prev => new Map(prev).set(tempId, optimisticMessage))
+      toast({
+        title: 'Offline',
+        description: 'Message will be sent when connection is restored',
+      })
+      return
+    }
 
+    // Send via WebSocket with temp ID
     socketRef.current.emit('message:private', {
+      tempId,
       content: messageContent,
       senderId: user.id,
       senderName: user.name,
@@ -555,8 +889,9 @@ export default function DonChat() {
       replyToId: replyingTo?.id
     })
 
+    // Save to database
     try {
-      await fetch(`/api/conversations/${selectedConversation.id}/messages`, {
+      const res = await fetch(`/api/conversations/${selectedConversation.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -565,12 +900,39 @@ export default function DonChat() {
           replyToId: replyingTo?.id
         })
       })
+      
+      if (!res.ok) {
+        // Update message status to failed
+        setMessages(prev => prev.map(msg => 
+          msg.tempId === tempId ? { ...msg, status: 'failed' } : msg
+        ))
+        throw new Error('Failed to save message')
+      }
+      
+      const data = await res.json()
+      
+      // Update with real message ID from server
+      if (data.message) {
+        setMessages(prev => prev.map(msg => 
+          msg.tempId === tempId ? { 
+            ...msg, 
+            id: data.message.id, 
+            status: 'sent',
+            _optimistic: false 
+          } : msg
+        ))
+      }
     } catch (err) {
       console.error('Failed to save message:', err)
+      toast({
+        title: 'Error',
+        description: 'Failed to send message. Click to retry.',
+        variant: 'destructive'
+      })
     }
 
     void fetchConversations()
-  }, [inputMessage, user, selectedConversation, selectedUser, fetchConversations, replyingTo])
+  }, [inputMessage, user, selectedConversation, selectedUser, fetchConversations, replyingTo, isConnected, toast])
 
   const handleInputChange = (value: string) => {
     setInputMessage(value)
@@ -791,6 +1153,202 @@ export default function DonChat() {
     setShowEmojiPicker(false)
   }
 
+  // Delete message handler
+  const handleDeleteMessage = (message: Message) => {
+    setMessageToDelete(message)
+    setShowDeleteMessageConfirm(true)
+  }
+
+  const confirmDeleteMessage = async () => {
+    if (!messageToDelete || !selectedConversation) return
+
+    try {
+      const res = await fetch(`/api/conversations/${selectedConversation.id}/messages?messageId=${messageToDelete.id}`, {
+        method: 'DELETE'
+      })
+
+      if (res.ok) {
+        setMessages(prev => prev.filter(m => m.id !== messageToDelete.id))
+        toast({
+          title: 'Message deleted',
+          description: 'The message has been deleted successfully.'
+        })
+      }
+    } catch (err) {
+      console.error('Failed to delete message:', err)
+      toast({
+        title: 'Error',
+        description: 'Failed to delete message',
+        variant: 'destructive'
+      })
+    } finally {
+      setShowDeleteMessageConfirm(false)
+      setMessageToDelete(null)
+    }
+  }
+
+  // Delete conversation handler
+  const handleDeleteChat = () => {
+    setShowDeleteChatConfirm(true)
+  }
+
+  const confirmDeleteChat = async () => {
+    if (!selectedConversation) return
+
+    try {
+      const res = await fetch(`/api/conversations/${selectedConversation.id}`, {
+        method: 'DELETE'
+      })
+
+      if (res.ok) {
+        setConversations(prev => prev.filter(c => c.id !== selectedConversation.id))
+        setSelectedConversation(null)
+        setSelectedUser(null)
+        setMessages([])
+        setShowMobileChat(false)
+        toast({
+          title: 'Chat deleted',
+          description: 'The conversation has been deleted successfully.'
+        })
+      }
+    } catch (err) {
+      console.error('Failed to delete chat:', err)
+      toast({
+        title: 'Error',
+        description: 'Failed to delete chat',
+        variant: 'destructive'
+      })
+    } finally {
+      setShowDeleteChatConfirm(false)
+    }
+  }
+
+  // Star message handler
+  const handleStarMessage = (messageId: string) => {
+    setStarredMessages(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(messageId)) {
+        newSet.delete(messageId)
+        toast({
+          title: 'Unstarred',
+          description: 'Message removed from starred messages'
+        })
+      } else {
+        newSet.add(messageId)
+        toast({
+          title: 'Starred',
+          description: 'Message added to starred messages'
+        })
+      }
+      return newSet
+    })
+  }
+
+  // Video call handler
+  const handleVideoCall = () => {
+    toast({
+      title: 'Video Call',
+      description: 'Video calling feature coming soon! 📹'
+    })
+  }
+
+  // Audio call handler
+  const handleAudioCall = () => {
+    toast({
+      title: 'Voice Call',
+      description: 'Voice calling feature coming soon! 📞'
+    })
+  }
+
+  // Mute notifications handler
+  const handleMuteNotifications = () => {
+    setIsMuted(prev => !prev)
+    toast({
+      title: isMuted ? 'Notifications Enabled' : 'Notifications Muted',
+      description: isMuted 
+        ? 'You will receive notifications for this chat' 
+        : 'You won\'t receive notifications for this chat'
+    })
+  }
+
+  // Block user handler
+  const handleBlockUser = () => {
+    setIsBlocked(prev => !prev)
+    toast({
+      title: isBlocked ? 'User Unblocked' : 'User Blocked',
+      description: isBlocked 
+        ? `${selectedUser?.name} has been unblocked` 
+        : `${selectedUser?.name} has been blocked`
+    })
+  }
+
+  // Search in chat handler
+  const handleSearchInChat = () => {
+    toast({
+      title: 'Search in Chat',
+      description: 'Search feature coming soon! 🔍'
+    })
+  }
+
+  // Attachment handler
+  const handleAttachment = () => {
+    fileInputRef.current?.click()
+    toast({
+      title: 'Attach File',
+      description: 'Select a file to attach'
+    })
+  }
+
+  // Voice message handler
+  const handleVoiceMessage = () => {
+    toast({
+      title: 'Voice Message',
+      description: 'Voice recording feature coming soon! 🎤'
+    })
+  }
+
+  // Forward message handler
+  const executeForward = async (targetUserId: string) => {
+    if (!forwardingMessage || !user) return
+
+    try {
+      // Create or get conversation with target user
+      const res = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipientId: targetUserId })
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        // Send the forwarded message
+        await fetch(`/api/conversations/${data.conversation.id}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: forwardingMessage.content,
+            receiverId: targetUserId,
+            forwarded: true
+          })
+        })
+        toast({
+          title: 'Message Forwarded',
+          description: 'Message has been forwarded successfully'
+        })
+        void fetchConversations()
+      }
+    } catch (err) {
+      console.error('Failed to forward message:', err)
+      toast({
+        title: 'Error',
+        description: 'Failed to forward message',
+        variant: 'destructive'
+      })
+    } finally {
+      setForwardingMessage(null)
+    }
+  }
+
   const filteredUsers = users.filter(u => 
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.email?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -828,14 +1386,11 @@ export default function DonChat() {
             <h2 className="text-slate-900 dark:text-slate-100 text-xl font-bold leading-tight tracking-tight">DonChat</h2>
           </div>
           <div className="flex items-center gap-4">
-            <span className="hidden md:inline text-sm text-slate-500 dark:text-slate-400">
-              {authMode === 'login' ? "New to DonChat?" : "Already have an account?"}
-            </span>
             <button 
-              onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setAuthError('') }}
-              className="flex min-w-[84px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-emerald-500/10 text-emerald-600 text-sm font-bold leading-normal hover:bg-emerald-500/20 transition-colors"
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400"
             >
-              <span className="truncate">{authMode === 'login' ? 'Register' : 'Login'}</span>
+              {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </button>
           </div>
         </header>
@@ -886,98 +1441,182 @@ export default function DonChat() {
 
             {/* Form Section - Right Side */}
             <div className="flex flex-col justify-center p-8 md:p-16 lg:p-20 bg-white dark:bg-slate-900">
-              <div className="mb-10">
-                <h2 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">
-                  {authMode === 'login' ? 'Welcome back' : 'Create account'}
-                </h2>
-                <p className="text-slate-500 dark:text-slate-400">
-                  {authMode === 'login' ? 'Please enter your details to sign in' : 'Enter your details to get started'}
-                </p>
-              </div>
-
-              {authError && (
-                <div className="mb-6 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg p-3 text-red-600 dark:text-red-400 text-sm">
-                  {authError}
+              {/* Auto-login indicator */}
+              {autoLoginDetected ? (
+                <div className="text-center animate-fade-in">
+                  <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-4">
+                    <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">Welcome back!</h2>
+                  <p className="text-slate-500 dark:text-slate-400">Recognizing you...</p>
                 </div>
-              )}
+              ) : authStep === 'email' ? (
+                /* Email Step */
+                <>
+                  <div className="mb-10">
+                    <h2 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">
+                      Welcome to DonChat
+                    </h2>
+                    <p className="text-slate-500 dark:text-slate-400">
+                      Enter your email to continue
+                    </p>
+                  </div>
 
-              <form onSubmit={authMode === 'login' ? handleLogin : handleRegister} className="space-y-6">
-                {authMode === 'register' && (
-                  <div className="flex flex-col gap-2">
-                    <label className="text-slate-700 dark:text-slate-300 text-sm font-semibold">Name</label>
-                    <div className="relative">
-                      <User className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                  {authError && (
+                    <div className="mb-6 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg p-3 text-red-600 dark:text-red-400 text-sm flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4" />
+                      {authError}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleEmailSubmit} className="space-y-6">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-slate-700 dark:text-slate-300 text-sm font-semibold">Email Address</label>
+                      <div className="relative">
+                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                        <input
+                          type="email"
+                          placeholder="you@example.com"
+                          value={authEmail}
+                          onChange={(e) => setAuthEmail(e.target.value)}
+                          required
+                          autoFocus
+                          className="w-full pl-12 pr-4 py-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all placeholder:text-slate-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Email detection message */}
+                    {emailExists !== null && (
+                      <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
+                        emailExists 
+                          ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' 
+                          : 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                      }`}>
+                        {emailExists ? (
+                          <>
+                            <CheckCircle2 className="h-4 w-4" />
+                            <span>Existing user - We&apos;ll log you in</span>
+                          </>
+                        ) : (
+                          <>
+                            <User className="h-4 w-4" />
+                            <span>New user - Please verify your email</span>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={isAuthLoading || !authEmail.trim()}
+                      className="w-full bg-emerald-500 text-white py-4 rounded-lg font-bold text-lg hover:bg-emerald-600 shadow-lg shadow-emerald-500/20 transform active:scale-[0.98] transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {isAuthLoading ? (
+                        <>
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                          Checking...
+                        </>
+                      ) : (
+                        <>
+                          Continue
+                          <ArrowRight className="h-5 w-5" />
+                        </>
+                      )}
+                    </button>
+                  </form>
+
+                  <p className="text-center text-slate-500 dark:text-slate-400 text-sm mt-8">
+                    By continuing, you agree to our{' '}
+                    <a className="text-emerald-600 font-medium hover:underline">Terms of Service</a>
+                    {' '}and{' '}
+                    <a className="text-emerald-600 font-medium hover:underline">Privacy Policy</a>
+                  </p>
+                </>
+              ) : (
+                /* OTP Step */
+                <>
+                  <button
+                    onClick={handleBackToEmail}
+                    className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 mb-6 transition-colors"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    <span>Back</span>
+                  </button>
+
+                  <div className="mb-10">
+                    <h2 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">
+                      Verify your email
+                    </h2>
+                    <p className="text-slate-500 dark:text-slate-400">
+                      We&apos;ve sent a 6-digit code to <span className="font-medium text-slate-700 dark:text-slate-300">{authEmail}</span>
+                    </p>
+                  </div>
+
+                  {authError && (
+                    <div className="mb-6 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg p-3 text-red-600 dark:text-red-400 text-sm flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4" />
+                      {authError}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleVerifyOtp} className="space-y-6">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-slate-700 dark:text-slate-300 text-sm font-semibold">Verification Code</label>
                       <input
                         type="text"
-                        placeholder="Your name"
-                        value={authName}
-                        onChange={(e) => setAuthName(e.target.value)}
-                        required
-                        className="w-full pl-12 pr-4 py-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all placeholder:text-slate-400"
+                        inputMode="numeric"
+                        placeholder="Enter 6-digit code"
+                        value={authOtp}
+                        onChange={(e) => handleOtpChange(e.target.value)}
+                        maxLength={6}
+                        autoFocus
+                        className="w-full px-4 py-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all text-center text-2xl font-bold tracking-[0.5em] placeholder:text-slate-400 placeholder:text-base placeholder:tracking-normal"
                       />
                     </div>
+
+                    <button
+                      type="submit"
+                      disabled={isAuthLoading || authOtp.length !== 6}
+                      className="w-full bg-emerald-500 text-white py-4 rounded-lg font-bold text-lg hover:bg-emerald-600 shadow-lg shadow-emerald-500/20 transform active:scale-[0.98] transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {isAuthLoading ? (
+                        <>
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                          Verifying...
+                        </>
+                      ) : (
+                        <>
+                          Verify
+                          <Check className="h-5 w-5" />
+                        </>
+                      )}
+                    </button>
+                  </form>
+
+                  {/* Timer and Resend */}
+                  <div className="mt-6 text-center">
+                    {otpTimer > 0 ? (
+                      <p className="text-slate-500 dark:text-slate-400">
+                        Resend code in <span className="font-medium text-slate-700 dark:text-slate-300">{formatTimer(otpTimer)}</span>
+                      </p>
+                    ) : (
+                      <button
+                        onClick={handleResendOtp}
+                        disabled={!canResendOtp}
+                        className="text-emerald-600 font-medium hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Resend verification code
+                      </button>
+                    )}
                   </div>
-                )}
 
-                <div className="flex flex-col gap-2">
-                  <label className="text-slate-700 dark:text-slate-300 text-sm font-semibold">Email Address</label>
-                  <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
-                    <input
-                      type="email"
-                      placeholder="you@example.com"
-                      value={authEmail}
-                      onChange={(e) => setAuthEmail(e.target.value)}
-                      required
-                      className="w-full pl-12 pr-4 py-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all placeholder:text-slate-400"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <label className="text-slate-700 dark:text-slate-300 text-sm font-semibold">Password</label>
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
-                    <input
-                      type="password"
-                      placeholder="••••••••"
-                      value={authPassword}
-                      onChange={(e) => setAuthPassword(e.target.value)}
-                      required
-                      className="w-full pl-12 pr-4 py-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all placeholder:text-slate-400"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isAuthLoading}
-                  className="w-full bg-emerald-500 text-white py-4 rounded-lg font-bold text-lg hover:bg-emerald-600 shadow-lg shadow-emerald-500/20 transform active:scale-[0.98] transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {isAuthLoading ? (
-                    <>
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      {authMode === 'login' ? 'Signing in...' : 'Creating account...'}
-                    </>
-                  ) : (
-                    <>
-                      {authMode === 'login' ? 'Sign In' : 'Create Account'}
-                      <ArrowRight className="h-5 w-5" />
-                    </>
-                  )}
-                </button>
-
-                <p className="text-center text-slate-500 dark:text-slate-400 text-sm mt-8">
-                  {authMode === 'login' ? "Don't have an account?" : "Already have an account?"}{' '}
-                  <button
-                    type="button"
-                    onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setAuthError('') }}
-                    className="text-emerald-600 font-bold hover:underline"
-                  >
-                    {authMode === 'login' ? 'Register for free' : 'Sign in'}
-                  </button>
-                </p>
-              </form>
+                  {/* Development hint */}
+                  <p className="mt-4 text-xs text-center text-slate-400">
+                    Check console for OTP code
+                  </p>
+                </>
+              )}
             </div>
           </div>
         </main>
@@ -1111,10 +1750,25 @@ export default function DonChat() {
             <div className="flex items-center justify-between mb-4">
               <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">Chats</h1>
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1 text-xs text-slate-500">
-                  <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
-                  <span>{onlineUsers.length}</span>
-                </div>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800">
+                        {connectionQuality === 'excellent' && <Wifi className="h-3.5 w-3.5 text-emerald-500" />}
+                        {connectionQuality === 'good' && <Wifi className="h-3.5 w-3.5 text-yellow-500" />}
+                        {connectionQuality === 'poor' && <Wifi className="h-3.5 w-3.5 text-orange-500" />}
+                        {connectionQuality === 'disconnected' && <WifiOff className="h-3.5 w-3.5 text-red-500" />}
+                        <span className="text-xs text-slate-500">{onlineUsers.length}</span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {connectionQuality === 'excellent' && 'Connected • Excellent'}
+                      {connectionQuality === 'good' && 'Connected • Good'}
+                      {connectionQuality === 'poor' && 'Unstable Connection'}
+                      {connectionQuality === 'disconnected' && 'Offline'}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1298,13 +1952,22 @@ export default function DonChat() {
                   </div>
                 </div>
                 <div className="flex items-center gap-0.5 sm:gap-1">
-                  <button className="size-11 sm:size-9 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
+                  <button 
+                    onClick={handleVideoCall}
+                    className="size-11 sm:size-9 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
+                  >
                     <Video className="h-5 w-5" />
                   </button>
-                  <button className="size-11 sm:size-9 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
+                  <button 
+                    onClick={handleAudioCall}
+                    className="size-11 sm:size-9 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
+                  >
                     <Phone className="h-5 w-5" />
                   </button>
-                  <button className="size-11 sm:size-9 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
+                  <button 
+                    onClick={handleSearchInChat}
+                    className="size-11 sm:size-9 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
+                  >
                     <Search className="h-5 w-5" />
                   </button>
                   <DropdownMenu>
@@ -1318,16 +1981,16 @@ export default function DonChat() {
                         <User className="h-4 w-4 mr-2" />
                         Contact Info
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleMuteNotifications}>
                         <Bell className="h-4 w-4 mr-2" />
-                        Mute Notifications
+                        {isMuted ? 'Unmute Notifications' : 'Mute Notifications'}
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => toast({ title: 'Starred Messages', description: 'View all starred messages' })}>
                         <Star className="h-4 w-4 mr-2" />
                         Starred Messages
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-red-600">
+                      <DropdownMenuItem className="text-red-600" onClick={handleDeleteChat}>
                         <Trash2 className="h-4 w-4 mr-2" />
                         Delete Chat
                       </DropdownMenuItem>
@@ -1401,7 +2064,7 @@ export default function DonChat() {
                             <p className="truncate">{msg.replyTo.content}</p>
                           </div>
                         )}
-                        <div className={`${msg.senderId === user?.id 
+                        <div className={`message-bubble ${msg._optimistic ? 'sending' : ''} ${msg.senderId === user?.id 
                           ? 'bg-emerald-500 text-white rounded-2xl rounded-tr-md' 
                           : 'bg-white dark:bg-slate-800 rounded-2xl rounded-tl-md shadow-sm'} px-3 py-2`}>
                           {msg.isForwarded && (
@@ -1413,7 +2076,31 @@ export default function DonChat() {
                           <div className="flex items-center justify-end gap-1 mt-1">
                             <span className="text-[10px] opacity-70">{formatTime(msg.createdAt)}</span>
                             {msg.senderId === user?.id && (
-                              <CheckCheck className="h-3 w-3 opacity-70" />
+                              <span className="flex items-center">
+                                {msg.status === 'sending' && (
+                                  <Loader2 className="h-3 w-3 opacity-70 animate-spin" />
+                                )}
+                                {msg.status === 'sent' && (
+                                  <Check className="h-3 w-3 opacity-70" />
+                                )}
+                                {msg.status === 'delivered' && (
+                                  <CheckCheck className="h-3 w-3 opacity-70" />
+                                )}
+                                {msg.status === 'read' && (
+                                  <CheckCheck className="h-3 w-3 text-blue-400" />
+                                )}
+                                {msg.status === 'failed' && (
+                                  <button 
+                                    onClick={() => toast({ title: 'Retry', description: 'Retrying message...' })}
+                                    className="text-red-400 hover:text-red-300"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                )}
+                                {(!msg.status || msg.status === 'sent') && !msg._optimistic && (
+                                  <CheckCheck className="h-3 w-3 opacity-70" />
+                                )}
+                              </span>
                             )}
                           </div>
                         </div>
@@ -1466,18 +2153,18 @@ export default function DonChat() {
                                 {copiedMessageId === msg.id ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
                                 {copiedMessageId === msg.id ? 'Copied' : 'Copy'}
                               </DropdownMenuItem>
-                              <DropdownMenuItem>
-                                <Star className="h-4 w-4 mr-2" />
-                                Star
+                              <DropdownMenuItem onClick={() => handleStarMessage(msg.id)}>
+                                <Star className={`h-4 w-4 mr-2 ${starredMessages.has(msg.id) ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+                                {starredMessages.has(msg.id) ? 'Unstar' : 'Star'}
                               </DropdownMenuItem>
                               {msg.senderId === user?.id && (
                                 <>
                                   <DropdownMenuSeparator />
-                                  <DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => toast({ title: 'Edit Message', description: 'Edit feature coming soon!' })}>
                                     <Edit3 className="h-4 w-4 mr-2" />
                                     Edit
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem className="text-red-600">
+                                  <DropdownMenuItem className="text-red-600" onClick={() => handleDeleteMessage(msg)}>
                                     <Trash2 className="h-4 w-4 mr-2" />
                                     Delete
                                   </DropdownMenuItem>
@@ -1522,6 +2209,20 @@ export default function DonChat() {
                 )}
                 
                 <div ref={messagesEndRef} />
+                
+                {/* Scroll to bottom button */}
+                {showNewMessageBadge && (
+                  <button
+                    onClick={() => {
+                      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+                      setShowNewMessageBadge(false)
+                    }}
+                    className="absolute bottom-20 right-4 bg-emerald-500 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 hover:bg-emerald-600 transition-colors animate-bounce"
+                  >
+                    <ChevronLeft className="h-4 w-4 rotate-[-90deg]" />
+                    <span className="text-sm font-medium">New messages</span>
+                  </button>
+                )}
               </div>
 
               {/* Reply Preview */}
@@ -1571,7 +2272,7 @@ export default function DonChat() {
                   </div>
                   
                   <button 
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={handleAttachment}
                     className="size-11 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                   >
                     <Paperclip className="h-5 w-5" />
@@ -1588,7 +2289,10 @@ export default function DonChat() {
                     disabled={isAiThinking}
                   />
                   
-                  <button className="size-11 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+                  <button 
+                    onClick={handleVoiceMessage}
+                    className="size-11 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                  >
                     <Mic className="h-5 w-5" />
                   </button>
                   
@@ -1636,17 +2340,26 @@ export default function DonChat() {
                 <p className="text-sm text-slate-500 mb-6">{isAiChat ? 'AI Assistant' : selectedUser.email || 'DonChat User'}</p>
                 
                 <div className="flex gap-4 mb-8">
-                  <button className="flex flex-col items-center gap-1 p-3 rounded-xl bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 transition-colors">
+                  <button 
+                    onClick={() => toast({ title: 'Profile', description: 'View full profile' })}
+                    className="flex flex-col items-center gap-1 p-3 rounded-xl bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 transition-colors"
+                  >
                     <User className="h-5 w-5" />
                     <span className="text-xs font-medium">Profile</span>
                   </button>
-                  <button className="flex flex-col items-center gap-1 p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+                  <button 
+                    onClick={handleMuteNotifications}
+                    className={`flex flex-col items-center gap-1 p-3 rounded-xl transition-colors ${isMuted ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                  >
                     <Bell className="h-5 w-5" />
-                    <span className="text-xs font-medium">Mute</span>
+                    <span className="text-xs font-medium">{isMuted ? 'Unmute' : 'Mute'}</span>
                   </button>
-                  <button className="flex flex-col items-center gap-1 p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+                  <button 
+                    onClick={handleBlockUser}
+                    className={`flex flex-col items-center gap-1 p-3 rounded-xl transition-colors ${isBlocked ? 'bg-red-500/10 text-red-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                  >
                     <Ban className="h-5 w-5" />
-                    <span className="text-xs font-medium">Block</span>
+                    <span className="text-xs font-medium">{isBlocked ? 'Unblock' : 'Block'}</span>
                   </button>
                 </div>
               </div>
@@ -1691,7 +2404,10 @@ export default function DonChat() {
             </div>
             
             <div className="p-4 border-t border-slate-200 dark:border-slate-800">
-              <button className="w-full py-3 text-red-500 font-medium rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
+              <button 
+                onClick={handleDeleteChat}
+                className="w-full py-3 text-red-500 font-medium rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+              >
                 Delete Chat
               </button>
             </div>
@@ -1699,12 +2415,15 @@ export default function DonChat() {
         )}
       </div>
 
+      {/* Toaster for notifications */}
+      <Toaster />
+
       {/* Mobile Bottom Navigation Bar - Only visible on mobile (< lg) */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-2 py-1 safe-area-inset-bottom z-50">
+      <nav className={`lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-t border-slate-200 dark:border-slate-800 px-2 py-1 safe-area-inset-bottom z-50 transition-transform duration-300 ${isNavbarVisible ? 'translate-y-0' : 'translate-y-full'}`}>
         <div className="flex items-center justify-around">
           <button 
             onClick={() => { setShowMobileChat(false); setIsAiChat(false); }}
-            className="flex flex-col items-center justify-center gap-0.5 p-2 min-h-12 min-w-12 rounded-xl transition-colors text-emerald-600"
+            className={`flex flex-col items-center justify-center gap-0.5 p-2 min-h-12 min-w-12 rounded-xl transition-colors ${!showMobileChat ? 'text-emerald-600 bg-emerald-500/10' : 'text-slate-400 hover:text-emerald-600'}`}
           >
             <MessageCircle className="h-5 w-5" />
             <span className="text-[10px] font-medium">Chats</span>
@@ -1718,7 +2437,7 @@ export default function DonChat() {
           </button>
           <button 
             onClick={() => startAiChat()}
-            className="flex flex-col items-center justify-center gap-0.5 p-2 min-h-12 min-w-12 rounded-xl transition-colors text-slate-400 hover:text-emerald-600"
+            className={`flex flex-col items-center justify-center gap-0.5 p-2 min-h-12 min-w-12 rounded-xl transition-colors ${isAiChat ? 'text-emerald-600 bg-emerald-500/10' : 'text-slate-400 hover:text-emerald-600'}`}
           >
             <Bot className="h-5 w-5" />
             <span className="text-[10px] font-medium">AI</span>
@@ -1924,29 +2643,68 @@ export default function DonChat() {
             </div>
             <p className="text-sm text-slate-500">Select a chat to forward this message:</p>
             <div className="max-h-64 overflow-y-auto space-y-1">
-              {conversations.map((conv) => {
-                const otherUser = conv.participants.find(p => p.id !== user?.id)
-                if (!otherUser) return null
-                return (
-                  <button
-                    key={conv.id}
-                    onClick={() => {
-                      // Forward logic here
-                      setForwardingMessage(null)
-                    }}
-                    className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                  >
-                    <div className="size-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-emerald-600 font-semibold">
-                      {otherUser.name.charAt(0).toUpperCase()}
-                    </div>
-                    <span className="font-medium text-slate-900 dark:text-slate-100">{otherUser.name}</span>
-                  </button>
-                )
-              })}
+              {filteredUsers.map((u) => (
+                <button
+                  key={u.id}
+                  onClick={() => executeForward(u.id)}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <div className="size-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-emerald-600 font-semibold">
+                    {u.name.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="font-medium text-slate-900 dark:text-slate-100">{u.name}</span>
+                </button>
+              ))}
             </div>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Message Confirmation Dialog */}
+      <AlertDialog open={showDeleteMessageConfirm} onOpenChange={setShowDeleteMessageConfirm}>
+        <AlertDialogContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-slate-900 dark:text-slate-100">Delete Message</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-600 dark:text-slate-400">
+              Are you sure you want to delete this message? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmDeleteMessage}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Chat Confirmation Dialog */}
+      <AlertDialog open={showDeleteChatConfirm} onOpenChange={setShowDeleteChatConfirm}>
+        <AlertDialogContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-slate-900 dark:text-slate-100">Delete Chat</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-600 dark:text-slate-400">
+              Are you sure you want to delete this chat? All messages will be permanently deleted. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmDeleteChat}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

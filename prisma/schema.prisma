@@ -18,7 +18,7 @@ model User {
   name         String
   email        String   @unique
   phone        String?
-  password     String
+  password     String?  // Optional for OTP users
   bio          String?
   avatar       String?
   status       String?  // Custom status message
@@ -35,9 +35,59 @@ model User {
   groupMembers       GroupMember[]
   reactions          MessageReaction[]
   starredMessages    StarredMessage[]
+  otps               OTP[]
+  trustedDevices     TrustedDevice[]
   
   @@index([email])
   @@index([isOnline])
+}
+
+// OTP for email verification
+model OTP {
+  id          String   @id @default(cuid())
+  email       String
+  code        String   // 6-digit OTP code
+  type        String   @default("LOGIN") // LOGIN, VERIFY, RESET
+  expiresAt   DateTime
+  used        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String?
+  
+  @@index([email, code])
+  @@index([expiresAt])
+}
+
+// Trusted devices for auto-login
+model TrustedDevice {
+  id            String   @id @default(cuid())
+  userId        String
+  deviceFingerprint String // Unique device identifier
+  deviceName    String?  // e.g., "Chrome on Windows"
+  lastUsed      DateTime @default(now())
+  createdAt     DateTime @default(now())
+  
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, deviceFingerprint])
+  @@index([userId])
+}
+
+// User sessions
+model Session {
+  id          String   @id @default(cuid())
+  userId      String
+  token       String   @unique
+  deviceFingerprint String?
+  ipAddress   String?
+  userAgent   String?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
 }
 
 model Conversation {

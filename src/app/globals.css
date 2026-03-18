@@ -120,3 +120,207 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Real-time messaging animations */
+@keyframes message-appear {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes message-send {
+  from {
+    opacity: 0.5;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-sending {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes typing-dot {
+  0%, 60%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bounce-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Message bubble animations */
+.message-bubble {
+  animation: message-appear 0.3s ease-out;
+}
+
+.message-bubble.sending {
+  animation: pulse-sending 1.5s infinite;
+}
+
+.message-bubble.new {
+  animation: bounce-in 0.4s ease-out;
+}
+
+/* Typing indicator dots */
+.typing-dot {
+  animation: typing-dot 1.4s ease-in-out infinite;
+}
+
+.typing-dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Status indicators */
+.status-sending {
+  animation: pulse-sending 1.5s infinite;
+}
+
+/* Smooth transitions for status changes */
+.message-status {
+  transition: all 0.3s ease;
+}
+
+/* New message badge animation */
+.new-message-badge {
+  animation: bounce-in 0.3s ease-out;
+}
+
+/* Connection status pulse */
+@keyframes connection-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.connection-pulse {
+  animation: connection-pulse 2s infinite;
+}
+
+/* Custom scrollbar for messages area */
+.messages-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.messages-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.messages-scroll::-webkit-scrollbar-thumb {
+  background: rgb(100 116 139 / 0.3);
+  border-radius: 3px;
+}
+
+.messages-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgb(100 116 139 / 0.5);
+}
+
+/* Message reactions animation */
+.reaction-appear {
+  animation: bounce-in 0.3s ease-out;
+}
+
+/* Optimistic message styling */
+.message-optimistic {
+  opacity: 0.8;
+}
+
+.message-failed {
+  border: 1px solid rgb(239 68 68 / 0.5);
+  background: rgb(239 68 68 / 0.1);
+}
+
+/* Safe area for iOS devices */
+.safe-area-inset-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Smooth navbar transition */
+.navbar-transition {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Hide scrollbar on mobile for cleaner look */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Responsive chat container */
+@media (max-width: 768px) {
+  .chat-container {
+    padding-bottom: 60px;
+  }
+}
+
+/* iOS bounce scroll fix */
+@supports (-webkit-touch-callout: none) {
+  .mobile-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+}
