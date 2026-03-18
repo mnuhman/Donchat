@@ -6,6 +6,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { db } from '@/lib/db'
 
+// Force Node.js runtime for database operations
+export const runtime = 'nodejs'
+
 // Get all conversations for current user
 export async function GET() {
   try {
@@ -29,9 +32,11 @@ export async function GET() {
                   select: {
                     id: true,
                     name: true,
-                    phone: true,
+                    email: true,
+                    bio: true,
                     avatar: true,
                     isOnline: true,
+                    lastSeen: true
                   }
                 }
               }
@@ -39,6 +44,7 @@ export async function GET() {
             messages: {
               take: 1,
               orderBy: { createdAt: 'desc' },
+              where: { deletedAt: null },
               include: {
                 sender: {
                   select: { id: true, name: true }
@@ -60,13 +66,18 @@ export async function GET() {
 
       return {
         id: p.conversation.id,
+        type: p.conversation.type,
+        name: p.conversation.name,
+        avatar: p.conversation.avatar,
         updatedAt: p.conversation.updatedAt.toISOString(),
         participants: p.conversation.participants.map(pp => ({
           id: pp.user.id,
           name: pp.user.name,
-          phone: pp.user.phone,
+          email: pp.user.email,
+          bio: pp.user.bio,
           avatar: pp.user.avatar,
-          isOnline: pp.user.isOnline
+          isOnline: pp.user.isOnline,
+          lastSeen: pp.user.lastSeen?.toISOString() || null
         })),
         lastMessage: p.conversation.messages[0] ? {
           id: p.conversation.messages[0].id,
@@ -107,31 +118,62 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if conversation already exists
-    const existingParticipation = await db.conversationParticipant.findFirst({
+    // Check if conversation already exists between these two users
+    const existingParticipations = await db.conversationParticipant.findMany({
       where: { userId: user.id },
       include: {
         conversation: {
           include: {
-            participants: true
+            participants: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    bio: true,
+                    avatar: true,
+                    isOnline: true,
+                    lastSeen: true
+                  }
+                }
+              }
+            }
           }
         }
       }
     })
 
-    const existingConversation = existingParticipation?.conversation.participants.some(
-      p => p.userId === recipientId
+    // Find conversation where both users are participants
+    const existingConversation = existingParticipations.find(p => 
+      p.conversation.participants.some(pp => pp.userId === recipientId)
     )
 
     if (existingConversation) {
       return NextResponse.json({
-        conversation: existingParticipation?.conversation
+        conversation: {
+          id: existingConversation.conversation.id,
+          type: existingConversation.conversation.type,
+          name: existingConversation.conversation.name,
+          avatar: existingConversation.conversation.avatar,
+          updatedAt: existingConversation.conversation.updatedAt.toISOString(),
+          participants: existingConversation.conversation.participants.map(pp => ({
+            id: pp.user.id,
+            name: pp.user.name,
+            email: pp.user.email,
+            bio: pp.user.bio,
+            avatar: pp.user.avatar,
+            isOnline: pp.user.isOnline,
+            lastSeen: pp.user.lastSeen?.toISOString() || null
+          }))
+        }
       })
     }
 
     // Create new conversation
     const conversation = await db.conversation.create({
       data: {
+        type: 'PRIVATE',
         participants: {
           create: [
             { userId: user.id },
@@ -146,9 +188,11 @@ export async function POST(request: NextRequest) {
               select: {
                 id: true,
                 name: true,
-                phone: true,
+                email: true,
+                bio: true,
                 avatar: true,
-                isOnline: true
+                isOnline: true,
+                lastSeen: true
               }
             }
           }
@@ -156,7 +200,24 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ conversation })
+    return NextResponse.json({
+      conversation: {
+        id: conversation.id,
+        type: conversation.type,
+        name: conversation.name,
+        avatar: conversation.avatar,
+        updatedAt: conversation.updatedAt.toISOString(),
+        participants: conversation.participants.map(pp => ({
+          id: pp.user.id,
+          name: pp.user.name,
+          email: pp.user.email,
+          bio: pp.user.bio,
+          avatar: pp.user.avatar,
+          isOnline: pp.user.isOnline,
+          lastSeen: pp.user.lastSeen?.toISOString() || null
+        }))
+      }
+    })
   } catch (error) {
     console.error('Create conversation error:', error)
     return NextResponse.json(

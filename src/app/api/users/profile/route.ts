@@ -3,8 +3,11 @@
  * Repository: https://github.com/mnuhman/Donchat.git
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentUser, hashPassword } from '@/lib/auth'
+import { getCurrentUser } from '@/lib/auth'
 import { db } from '@/lib/db'
+
+// Force Node.js runtime for database operations
+export const runtime = 'nodejs'
 
 // Get current user profile
 export async function GET() {

@@ -6,6 +6,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { db } from '@/lib/db'
 
+// Force Node.js runtime for database operations
+export const runtime = 'nodejs'
+
 // Get messages for a conversation
 export async function GET(
   request: NextRequest,
@@ -33,8 +36,24 @@ export async function GET(
           select: {
             id: true,
             name: true,
-            avatar: true,
-            phone: true
+            avatar: true
+          }
+        },
+        reactions: {
+          select: {
+            id: true,
+            emoji: true,
+            userId: true
+          }
+        },
+        replyTo: {
+          include: {
+            sender: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
           }
         }
       },
@@ -67,7 +86,7 @@ export async function POST(
     }
 
     const { id } = await params
-    const { content, receiverId } = await request.json()
+    const { content, receiverId, replyToId } = await request.json()
 
     if (!content || !receiverId) {
       return NextResponse.json(
@@ -79,17 +98,35 @@ export async function POST(
     const message = await db.message.create({
       data: {
         content,
+        type: 'TEXT',
         senderId: user.id,
         receiverId,
-        conversationId: id
+        conversationId: id,
+        replyToId: replyToId || null
       },
       include: {
         sender: {
           select: {
             id: true,
             name: true,
-            avatar: true,
-            phone: true
+            avatar: true
+          }
+        },
+        reactions: {
+          select: {
+            id: true,
+            emoji: true,
+            userId: true
+          }
+        },
+        replyTo: {
+          include: {
+            sender: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
           }
         }
       }
@@ -101,7 +138,7 @@ export async function POST(
       data: { updatedAt: new Date() }
     })
 
-    return NextResponse.json({ message })
+    return NextResponse.json({ success: true, message })
   } catch (error) {
     console.error('Send message error:', error)
     return NextResponse.json(

@@ -6,6 +6,9 @@ import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { db } from '@/lib/db'
 
+// Force Node.js runtime for database operations
+export const runtime = 'nodejs'
+
 // Get all users except current user
 export async function GET() {
   try {
@@ -27,7 +30,8 @@ export async function GET() {
       select: {
         id: true,
         name: true,
-        phone: true,
+        email: true,
+        bio: true,
         avatar: true,
         isOnline: true,
         lastSeen: true,
