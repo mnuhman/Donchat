@@ -1106,7 +1106,7 @@ export default function DonChat() {
         </aside>
 
         {/* Conversation List Sidebar - Full width on mobile, fixed width on tablet/desktop */}
-        <section className={`${showMobileChat ? 'hidden md:flex' : 'flex'} w-full md:w-80 lg:w-80 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex-col absolute md:relative inset-0 md:inset-auto z-20 md:z-auto`}>
+        <section className={`${showMobileChat ? 'hidden md:flex' : 'flex'} w-full md:w-80 lg:w-80 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex-col absolute md:relative top-0 left-0 right-0 bottom-14 md:bottom-0 z-20 md:z-auto`}>
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">Chats</h1>
@@ -1266,7 +1266,7 @@ export default function DonChat() {
         </section>
 
         {/* Main Chat Area - Full width on mobile when chat selected */}
-        <main className={`${showMobileChat ? 'flex' : 'hidden md:flex'} flex-1 flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden absolute md:relative inset-0 md:inset-auto z-10 md:z-auto`}>
+        <main className={`${showMobileChat ? 'flex' : 'hidden md:flex'} flex-1 flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden absolute md:relative top-0 left-0 right-0 bottom-14 md:bottom-0 z-10 md:z-auto`}>
           {selectedUser ? (
             <>
               {/* Chat Header */}
